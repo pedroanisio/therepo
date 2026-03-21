@@ -1,12 +1,36 @@
 use crate::output::{bold, dim, green, red, yellow};
 use crate::plugin::builtin::health_config::{self, HealthConfig};
+use serde::Serialize;
 use std::path::Path;
 use std::process::Command;
+
+#[derive(Debug, Serialize)]
+struct HealthReport {
+    passed: u32,
+    warnings: u32,
+    errors: u32,
+    sections: Vec<HealthSection>,
+}
+
+#[derive(Debug, Serialize)]
+struct HealthSection {
+    name: String,
+    checks: Vec<HealthCheckRecord>,
+}
+
+#[derive(Debug, Serialize)]
+struct HealthCheckRecord {
+    name: String,
+    status: String,
+    summary: String,
+    details: Vec<String>,
+}
 
 // ── Public entry point ──────────────────────────────────────────────
 
 pub fn run(repo_root: &Path, args: &[&str]) {
     let subcommand = args.first().copied().filter(|a| !a.starts_with('-'));
+    let json = args.contains(&"--json");
 
     if args.iter().any(|a| *a == "--help" || *a == "-h") {
         if subcommand.is_none() {
@@ -25,7 +49,7 @@ pub fn run(repo_root: &Path, args: &[&str]) {
         None => {
             let verbose = args.iter().any(|a| *a == "--verbose" || *a == "-v");
             let check_updates = args.iter().any(|a| *a == "--check-updates" || *a == "-u");
-            cmd_check(repo_root, verbose, check_updates);
+            cmd_check(repo_root, verbose, check_updates, json);
         }
     }
 }
@@ -90,39 +114,42 @@ fn cmd_export(repo_root: &Path) {
 
 // ── check: main health check ────────────────────────────────────────
 
-#[expect(clippy::too_many_lines)]
-fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
-    let health_cfg = HealthConfig::load(repo_root);
-    let has_config = health_cfg.is_some();
+fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool, json: bool) {
+    let report = build_report(repo_root, verbose, check_updates);
 
-    println!("{}", bold("Environment health check"));
-    if has_config {
-        println!("  {}", dim("validating against .repo/health.toml"));
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+        );
+    } else {
+        print_report(&report);
     }
-    if check_updates {
-        println!("  {}", dim("checking for available updates..."));
+
+    if report.errors > 0 {
+        std::process::exit(1);
     }
-    println!();
+}
+
+#[expect(clippy::too_many_lines)]
+fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthReport {
+    let health_cfg = HealthConfig::load(repo_root);
 
     let mut pass = 0u32;
     let mut warn = 0u32;
     let mut fail = 0u32;
+    let mut tool_checks = Vec::new();
+    let mut repo_checks = Vec::new();
+    let mut env_checks = Vec::new();
+    let mut custom_checks = Vec::new();
 
     let checks = default_checks();
-
-    let w_name = checks
-        .iter()
-        .map(|c| c.name.len())
-        .max()
-        .unwrap_or(0)
-        .max(9); // "toolchain"
 
     // ── Tool version checks ─────────────────────────────────────
     for check in &checks {
         let result = check.execute();
         match &result {
             CheckResult::Ok(version) => {
-                // Validate against config if present.
                 let constraint_msg = if let Some(cfg) = &health_cfg {
                     validate_tool_version(&check.name, version, cfg)
                 } else {
@@ -130,17 +157,16 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
                 };
 
                 if let Some(msg) = constraint_msg {
-                    println!(
-                        "  {} {:<w_name$}  {}  {}",
-                        red("!!"),
-                        check.name,
-                        dim(version),
-                        red(&msg),
-                    );
-                    print_tool_hint(&check.name, health_cfg.as_ref(), w_name);
+                    let mut details = Vec::new();
+                    append_tool_hint_details(&mut details, &check.name, health_cfg.as_ref());
+                    tool_checks.push(HealthCheckRecord {
+                        name: check.name.clone(),
+                        status: "error".into(),
+                        summary: format!("{version} ({msg})"),
+                        details,
+                    });
                     fail += 1;
                 } else {
-                    // Check for available updates.
                     let update_msg = if check_updates {
                         check_for_update(&check.name, version, health_cfg.as_ref())
                     } else {
@@ -148,21 +174,20 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
                     };
 
                     if let Some(latest) = update_msg {
-                        println!(
-                            "  {} {:<w_name$}  {}  {}",
-                            yellow("~~"),
-                            check.name,
-                            dim(version),
-                            yellow(&format!("update available: {latest}")),
-                        );
+                        tool_checks.push(HealthCheckRecord {
+                            name: check.name.clone(),
+                            status: "warning".into(),
+                            summary: format!("{version} (update available: {latest})"),
+                            details: Vec::new(),
+                        });
                         warn += 1;
                     } else {
-                        println!(
-                            "  {} {:<w_name$}  {}",
-                            green("ok"),
-                            check.name,
-                            dim(version),
-                        );
+                        tool_checks.push(HealthCheckRecord {
+                            name: check.name.clone(),
+                            status: "ok".into(),
+                            summary: version.clone(),
+                            details: Vec::new(),
+                        });
                         pass += 1;
                     }
                 }
@@ -174,25 +199,31 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
                     .is_some_and(|t| t.required);
 
                 if required {
-                    println!(
-                        "  {} {:<w_name$}  {}",
-                        red("!!"),
-                        check.name,
-                        red("required but not found"),
-                    );
-                    print_tool_hint(&check.name, health_cfg.as_ref(), w_name);
+                    let mut details = Vec::new();
+                    append_tool_hint_details(&mut details, &check.name, health_cfg.as_ref());
+                    tool_checks.push(HealthCheckRecord {
+                        name: check.name.clone(),
+                        status: "error".into(),
+                        summary: "required but not found".into(),
+                        details,
+                    });
                     fail += 1;
                 } else if verbose {
-                    println!(
-                        "  {} {:<w_name$}  {}",
-                        dim("--"),
-                        dim(&check.name),
-                        dim("not found"),
-                    );
+                    tool_checks.push(HealthCheckRecord {
+                        name: check.name.clone(),
+                        status: "info".into(),
+                        summary: "not found".into(),
+                        details: Vec::new(),
+                    });
                 }
             }
             CheckResult::Error(msg) => {
-                println!("  {} {:<w_name$}  {}", red("!!"), check.name, yellow(msg),);
+                tool_checks.push(HealthCheckRecord {
+                    name: check.name.clone(),
+                    status: "error".into(),
+                    summary: msg.clone(),
+                    details: Vec::new(),
+                });
                 fail += 1;
             }
         }
@@ -221,14 +252,14 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
                 CheckResult::Ok(version) => {
                     let constraint_msg = validate_tool_version(name, version, cfg);
                     if let Some(msg) = constraint_msg {
-                        println!(
-                            "  {} {:<w_name$}  {}  {}",
-                            red("!!"),
-                            name,
-                            dim(version),
-                            red(&msg),
-                        );
-                        print_tool_hint(name, Some(cfg), w_name);
+                        let mut details = Vec::new();
+                        append_tool_hint_details(&mut details, name, Some(cfg));
+                        tool_checks.push(HealthCheckRecord {
+                            name: name.clone(),
+                            status: "error".into(),
+                            summary: format!("{version} ({msg})"),
+                            details,
+                        });
                         fail += 1;
                     } else {
                         let update_msg = if check_updates {
@@ -238,42 +269,52 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
                         };
 
                         if let Some(latest) = update_msg {
-                            println!(
-                                "  {} {:<w_name$}  {}  {}",
-                                yellow("~~"),
-                                name,
-                                dim(version),
-                                yellow(&format!("update available: {latest}")),
-                            );
+                            tool_checks.push(HealthCheckRecord {
+                                name: name.clone(),
+                                status: "warning".into(),
+                                summary: format!("{version} (update available: {latest})"),
+                                details: Vec::new(),
+                            });
                             warn += 1;
                         } else {
-                            println!("  {} {:<w_name$}  {}", green("ok"), name, dim(version),);
+                            tool_checks.push(HealthCheckRecord {
+                                name: name.clone(),
+                                status: "ok".into(),
+                                summary: version.clone(),
+                                details: Vec::new(),
+                            });
                             pass += 1;
                         }
                     }
                 }
                 CheckResult::Missing if req.required => {
-                    println!(
-                        "  {} {:<w_name$}  {}",
-                        red("!!"),
-                        name,
-                        red("required but not found"),
-                    );
-                    print_tool_hint(name, Some(cfg), w_name);
+                    let mut details = Vec::new();
+                    append_tool_hint_details(&mut details, name, Some(cfg));
+                    tool_checks.push(HealthCheckRecord {
+                        name: name.clone(),
+                        status: "error".into(),
+                        summary: "required but not found".into(),
+                        details,
+                    });
                     fail += 1;
                 }
                 CheckResult::Missing => {
                     if verbose {
-                        println!(
-                            "  {} {:<w_name$}  {}",
-                            dim("--"),
-                            dim(name),
-                            dim("not found"),
-                        );
+                        tool_checks.push(HealthCheckRecord {
+                            name: name.clone(),
+                            status: "info".into(),
+                            summary: "not found".into(),
+                            details: Vec::new(),
+                        });
                     }
                 }
                 CheckResult::Error(msg) => {
-                    println!("  {} {:<w_name$}  {}", red("!!"), name, yellow(msg),);
+                    tool_checks.push(HealthCheckRecord {
+                        name: name.clone(),
+                        status: "error".into(),
+                        summary: msg.clone(),
+                        details: Vec::new(),
+                    });
                     fail += 1;
                 }
             }
@@ -281,58 +322,59 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
     }
 
     // ── Repo-specific checks ────────────────────────────────────
-    println!();
-    println!("{}", bold("Repository"));
-    println!();
-
     if let Some(branch) = run_cmd("git", &["branch", "--show-current"]) {
-        println!("  {} {:<w_name$}  {}", green("ok"), "branch", dim(&branch));
+        repo_checks.push(HealthCheckRecord {
+            name: "branch".into(),
+            status: "ok".into(),
+            summary: branch,
+            details: Vec::new(),
+        });
         pass += 1;
     } else {
-        println!(
-            "  {} {:<w_name$}  {}",
-            red("!!"),
-            "branch",
-            yellow("not a git repository"),
-        );
+        repo_checks.push(HealthCheckRecord {
+            name: "branch".into(),
+            status: "error".into(),
+            summary: "not a git repository".into(),
+            details: Vec::new(),
+        });
         fail += 1;
     }
 
     let config_path = repo_root.join(".repo").join("config.toml");
     if config_path.is_file() {
-        println!(
-            "  {} {:<w_name$}  {}",
-            green("ok"),
-            "config",
-            dim(".repo/config.toml"),
-        );
+        repo_checks.push(HealthCheckRecord {
+            name: "config".into(),
+            status: "ok".into(),
+            summary: ".repo/config.toml".into(),
+            details: Vec::new(),
+        });
         pass += 1;
     } else {
-        println!(
-            "  {} {:<w_name$}  {}",
-            yellow("--"),
-            "config",
-            dim("no .repo/config.toml"),
-        );
+        repo_checks.push(HealthCheckRecord {
+            name: "config".into(),
+            status: "warning".into(),
+            summary: "no .repo/config.toml".into(),
+            details: Vec::new(),
+        });
         warn += 1;
     }
 
     let health_path = repo_root.join(".repo").join("health.toml");
     if health_path.is_file() {
-        println!(
-            "  {} {:<w_name$}  {}",
-            green("ok"),
-            "health",
-            dim(".repo/health.toml"),
-        );
+        repo_checks.push(HealthCheckRecord {
+            name: "health".into(),
+            status: "ok".into(),
+            summary: ".repo/health.toml".into(),
+            details: Vec::new(),
+        });
         pass += 1;
     } else {
-        println!(
-            "  {} {:<w_name$}  {}",
-            dim("--"),
-            "health",
-            dim("no .repo/health.toml (run `repo health init`)"),
-        );
+        repo_checks.push(HealthCheckRecord {
+            name: "health".into(),
+            status: "info".into(),
+            summary: "no .repo/health.toml (run `repo health init`)".into(),
+            details: Vec::new(),
+        });
     }
 
     let docs_root = repo_root.join("_docs");
@@ -342,36 +384,37 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
             .filter(|d| docs_root.join(d).is_dir())
             .copied()
             .collect();
-        println!(
-            "  {} {:<w_name$}  {}",
-            green("ok"),
-            "_docs",
-            dim(&subdirs.join(", ")),
-        );
+        repo_checks.push(HealthCheckRecord {
+            name: "_docs".into(),
+            status: "ok".into(),
+            summary: subdirs.join(", "),
+            details: Vec::new(),
+        });
         pass += 1;
     } else {
-        println!(
-            "  {} {:<w_name$}  {}",
-            yellow("--"),
-            "_docs",
-            dim("not found"),
-        );
+        repo_checks.push(HealthCheckRecord {
+            name: "_docs".into(),
+            status: "warning".into(),
+            summary: "not found".into(),
+            details: Vec::new(),
+        });
         warn += 1;
     }
 
-    check_virtualenv(w_name, &mut pass, &mut warn);
+    check_virtualenv(&mut env_checks, &mut pass, &mut warn);
 
     if let Some(toolchain) = run_cmd("rustup", &["show", "active-toolchain"]) {
         let short = toolchain.split_whitespace().next().unwrap_or(&toolchain);
-        println!("  {} {:<w_name$}  {}", green("ok"), "toolchain", dim(short),);
+        repo_checks.push(HealthCheckRecord {
+            name: "toolchain".into(),
+            status: "ok".into(),
+            summary: short.into(),
+            details: Vec::new(),
+        });
         pass += 1;
     }
 
     // ── Environment / cage detection ────────────────────────────
-    println!();
-    println!("{}", bold("Environment"));
-    println!();
-
     let cage = detect_cage();
     let cage_str = cage_name(&cage);
 
@@ -394,23 +437,28 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
             Cage::Host => "bare host".to_string(),
             _ => cage_str.to_string(),
         };
-        println!("  {} {:<w_name$}  {}", green("ok"), "runtime", label);
+        env_checks.push(HealthCheckRecord {
+            name: "runtime".into(),
+            status: "ok".into(),
+            summary: label,
+            details: Vec::new(),
+        });
         pass += 1;
     } else {
-        println!(
-            "  {} {:<w_name$}  {}",
-            red("!!"),
-            "runtime",
-            red(&format!(
+        env_checks.push(HealthCheckRecord {
+            name: "runtime".into(),
+            status: "error".into(),
+            summary: format!(
                 "{cage_str} (allowed: {})",
                 health_cfg
                     .as_ref()
-                    .unwrap()
+                    .expect("checked above")
                     .environment
                     .allowed_runtimes
                     .join(", ")
-            )),
-        );
+            ),
+            details: Vec::new(),
+        });
         fail += 1;
     }
 
@@ -419,41 +467,41 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
     if let Some(cfg) = &health_cfg {
         let expected = &cfg.environment.privilege;
         if expected != "auto" && expected != &privilege {
-            println!(
-                "  {} {:<w_name$}  {}",
-                red("!!"),
-                "privilege",
-                red(&format!("found {privilege}, expected {expected}")),
-            );
+            env_checks.push(HealthCheckRecord {
+                name: "privilege".into(),
+                status: "error".into(),
+                summary: format!("found {privilege}, expected {expected}"),
+                details: Vec::new(),
+            });
             fail += 1;
         } else {
-            println!(
-                "  {} {:<w_name$}  {}",
-                green("ok"),
-                "privilege",
-                dim(&privilege),
-            );
+            env_checks.push(HealthCheckRecord {
+                name: "privilege".into(),
+                status: "ok".into(),
+                summary: privilege,
+                details: Vec::new(),
+            });
             pass += 1;
         }
     } else {
-        println!(
-            "  {} {:<w_name$}  {}",
-            green("ok"),
-            "privilege",
-            dim(&privilege),
-        );
+        env_checks.push(HealthCheckRecord {
+            name: "privilege".into(),
+            status: "ok".into(),
+            summary: privilege,
+            details: Vec::new(),
+        });
         pass += 1;
     }
 
     // Available shells.
     let shells = detect_shells();
     if shells.is_empty() {
-        println!(
-            "  {} {:<w_name$}  {}",
-            yellow("--"),
-            "shells",
-            dim("none found in /etc/shells"),
-        );
+        env_checks.push(HealthCheckRecord {
+            name: "shells".into(),
+            status: "warning".into(),
+            summary: "none found in /etc/shells".into(),
+            details: Vec::new(),
+        });
     } else {
         // Validate required shell.
         let shell_ok = if let Some(cfg) = &health_cfg {
@@ -467,12 +515,12 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
         };
 
         if shell_ok {
-            println!(
-                "  {} {:<w_name$}  {}",
-                green("ok"),
-                "shells",
-                dim(&shells.join(", ")),
-            );
+            env_checks.push(HealthCheckRecord {
+                name: "shells".into(),
+                status: "ok".into(),
+                summary: shells.join(", "),
+                details: Vec::new(),
+            });
             pass += 1;
         } else {
             let required = &health_cfg
@@ -482,15 +530,12 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
                 .required_shell
                 .as_ref()
                 .unwrap();
-            println!(
-                "  {} {:<w_name$}  {}",
-                red("!!"),
-                "shells",
-                red(&format!(
-                    "required shell '{required}' not in: {}",
-                    shells.join(", ")
-                )),
-            );
+            env_checks.push(HealthCheckRecord {
+                name: "shells".into(),
+                status: "error".into(),
+                summary: format!("required shell '{required}' not in: {}", shells.join(", ")),
+                details: Vec::new(),
+            });
             fail += 1;
         }
     }
@@ -501,40 +546,33 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
-        println!("  {} {:<w_name$}  {}", green("ok"), "default", dim(&short),);
+        env_checks.push(HealthCheckRecord {
+            name: "default".into(),
+            status: "ok".into(),
+            summary: short,
+            details: Vec::new(),
+        });
     }
 
     // ── Custom checks ────────────────────────────────────────────
     if let Some(cfg) = &health_cfg
         && !cfg.checks.is_empty()
     {
-        println!();
-        println!("{}", bold("Checks"));
-        println!();
-
         for (name, check) in &cfg.checks {
             let output = Command::new("sh").arg("-c").arg(&check.command).output();
 
             match output {
                 Ok(out) if out.status.success() => {
-                    println!(
-                        "  {} {:<w_name$}  {}",
-                        green("ok"),
-                        name,
-                        dim(&check.description),
-                    );
+                    custom_checks.push(HealthCheckRecord {
+                        name: name.clone(),
+                        status: "ok".into(),
+                        summary: check.description.clone(),
+                        details: Vec::new(),
+                    });
                     pass += 1;
                 }
                 Ok(out) => {
                     let is_warn = check.severity == "warning";
-                    let icon = if is_warn { yellow("--") } else { red("!!") };
-                    let msg = if is_warn {
-                        yellow(&check.description)
-                    } else {
-                        red(&check.description)
-                    };
-
-                    println!("  {icon} {name:<w_name$}  {msg}");
 
                     let stderr = String::from_utf8_lossy(&out.stderr);
                     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -545,13 +583,19 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
                     } else {
                         ""
                     };
+                    let mut details = Vec::new();
                     if !detail.is_empty() {
-                        println!("    {:<w_name$}  {}", "", dim(detail));
+                        details.push(detail.to_string());
                     }
-
                     if let Some(ref hint) = check.hint {
-                        println!("    {:<w_name$}  {}", "", dim(&format!("hint: {hint}")));
+                        details.push(format!("hint: {hint}"));
                     }
+                    custom_checks.push(HealthCheckRecord {
+                        name: name.clone(),
+                        status: if is_warn { "warning" } else { "error" }.into(),
+                        summary: check.description.clone(),
+                        details,
+                    });
 
                     if is_warn {
                         warn += 1;
@@ -560,33 +604,44 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
                     }
                 }
                 Err(e) => {
-                    println!(
-                        "  {} {:<w_name$}  {}",
-                        red("!!"),
-                        name,
-                        red(&format!("failed to run: {e}")),
-                    );
+                    custom_checks.push(HealthCheckRecord {
+                        name: name.clone(),
+                        status: "error".into(),
+                        summary: format!("failed to run: {e}"),
+                        details: Vec::new(),
+                    });
                     fail += 1;
                 }
             }
         }
     }
 
-    // ── Summary ─────────────────────────────────────────────────
-    println!();
-    println!(
-        "  {} passed, {} warnings, {} errors",
-        green(&pass.to_string()),
-        yellow(&warn.to_string()),
-        if fail > 0 {
-            red(&fail.to_string())
-        } else {
-            fail.to_string()
+    let mut sections = vec![
+        HealthSection {
+            name: "Tools".into(),
+            checks: tool_checks,
         },
-    );
+        HealthSection {
+            name: "Repository".into(),
+            checks: repo_checks,
+        },
+        HealthSection {
+            name: "Environment".into(),
+            checks: env_checks,
+        },
+    ];
+    if !custom_checks.is_empty() {
+        sections.push(HealthSection {
+            name: "Checks".into(),
+            checks: custom_checks,
+        });
+    }
 
-    if fail > 0 {
-        std::process::exit(1);
+    HealthReport {
+        passed: pass,
+        warnings: warn,
+        errors: fail,
+        sections,
     }
 }
 
@@ -607,6 +662,7 @@ COMMANDS:
 OPTIONS:
     -u, --check-updates  Check for available updates (queries package registries)
     -v, --verbose        Show missing (not-found) tools too
+    --json               Emit machine-readable JSON for `repo health`
     -h, --help           Print this help message
 
 When .repo/health.toml exists, `repo health` validates the environment
@@ -639,19 +695,15 @@ fn check_for_update(name: &str, current_raw: &str, cfg: Option<&HealthConfig>) -
 
 // ── Install / URL hints ─────────────────────────────────────────────
 
-fn print_tool_hint(name: &str, cfg: Option<&HealthConfig>, w_name: usize) {
+fn append_tool_hint_details(details: &mut Vec<String>, name: &str, cfg: Option<&HealthConfig>) {
     let req = cfg.and_then(|c| c.tools.get(name));
 
     if let Some(install) = req.and_then(|r| r.install.as_deref()) {
-        println!(
-            "    {:<w_name$}  {}",
-            "",
-            dim(&format!("install: {install}")),
-        );
+        details.push(format!("install: {install}"));
     }
 
     if let Some(url) = req.and_then(|r| r.url.as_deref()) {
-        println!("    {:<w_name$}  {}", "", dim(&format!("    url: {url}")),);
+        details.push(format!("url: {url}"));
     }
 }
 
@@ -863,42 +915,96 @@ fn run_cmd(cmd: &str, args: &[&str]) -> Option<String> {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
-fn check_virtualenv(w_name: usize, pass: &mut u32, warn: &mut u32) {
+fn check_virtualenv(checks: &mut Vec<HealthCheckRecord>, pass: &mut u32, warn: &mut u32) {
     if let Ok(venv) = std::env::var("VIRTUAL_ENV") {
         let short = Path::new(&venv)
             .file_name()
             .unwrap_or_default()
             .to_string_lossy();
-        println!(
-            "  {} {:<w_name$}  {}",
-            green("ok"),
-            "venv",
-            dim(&format!("{short} (active)")),
-        );
+        checks.push(HealthCheckRecord {
+            name: "venv".into(),
+            status: "ok".into(),
+            summary: format!("{short} (active)"),
+            details: Vec::new(),
+        });
         *pass += 1;
         return;
     }
 
     if let Ok(env) = std::env::var("CONDA_DEFAULT_ENV") {
-        println!(
-            "  {} {:<w_name$}  {}",
-            green("ok"),
-            "venv",
-            dim(&format!("conda: {env}")),
-        );
+        checks.push(HealthCheckRecord {
+            name: "venv".into(),
+            status: "ok".into(),
+            summary: format!("conda: {env}"),
+            details: Vec::new(),
+        });
         *pass += 1;
         return;
     }
 
     if Path::new(".venv").is_dir() || Path::new("venv").is_dir() {
-        println!(
-            "  {} {:<w_name$}  {}",
-            yellow("--"),
-            "venv",
-            dim("found but not activated"),
-        );
+        checks.push(HealthCheckRecord {
+            name: "venv".into(),
+            status: "warning".into(),
+            summary: "found but not activated".into(),
+            details: Vec::new(),
+        });
         *warn += 1;
     }
+}
+
+fn print_report(report: &HealthReport) {
+    let width = report
+        .sections
+        .iter()
+        .flat_map(|section| section.checks.iter())
+        .map(|check| check.name.len())
+        .max()
+        .unwrap_or(0)
+        .max(9);
+
+    println!("{}", bold("Environment health check"));
+    println!();
+
+    for section in &report.sections {
+        if section.checks.is_empty() {
+            continue;
+        }
+        println!("{}", bold(&section.name));
+        println!();
+
+        for check in &section.checks {
+            let icon = match check.status.as_str() {
+                "ok" => green("ok"),
+                "warning" => yellow("~~"),
+                "error" => red("!!"),
+                _ => dim("--"),
+            };
+            let summary = match check.status.as_str() {
+                "warning" => yellow(&check.summary),
+                "error" => red(&check.summary),
+                _ => dim(&check.summary),
+            };
+
+            println!("  {icon} {:<width$}  {summary}", check.name);
+            for detail in &check.details {
+                println!("    {:<width$}  {}", "", dim(detail));
+            }
+        }
+
+        println!();
+    }
+
+    println!(
+        "  {} passed, {} warnings, {} errors",
+        green(&report.passed.to_string()),
+        yellow(&report.warnings.to_string()),
+        if report.errors > 0 {
+            red(&report.errors.to_string())
+        } else {
+            report.errors.to_string()
+        },
+    );
 }
 
 fn detect_privilege() -> String {

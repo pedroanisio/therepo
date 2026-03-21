@@ -91,3 +91,47 @@ pub fn status_color(s: &str) -> String {
         _ => s.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Color may or may not be enabled depending on the test runner's TTY.
+    // All assertions check that the plain text is present in the output.
+
+    #[test]
+    fn cyan_output_contains_input_text() {
+        assert!(cyan("hello").contains("hello"));
+    }
+
+    #[test]
+    fn status_color_contains_text_for_active_statuses() {
+        assert!(status_color("active").contains("active"));
+        assert!(status_color("accepted").contains("accepted"));
+        assert!(status_color("complete").contains("complete"));
+    }
+
+    #[test]
+    fn status_color_contains_text_for_proposal() {
+        assert!(status_color("proposal").contains("proposal"));
+    }
+
+    #[test]
+    fn status_color_contains_text_for_draft() {
+        assert!(status_color("draft").contains("draft"));
+    }
+
+    #[test]
+    fn status_color_contains_text_for_deprecated_statuses() {
+        assert!(status_color("superseded").contains("superseded"));
+        assert!(status_color("deprecated").contains("deprecated"));
+        assert!(status_color("archived").contains("archived"));
+        assert!(status_color("rejected").contains("rejected"));
+    }
+
+    #[test]
+    fn status_color_returns_unknown_statuses_unchanged() {
+        // Unknown statuses are never decorated, regardless of color state.
+        assert_eq!(status_color("foobar"), "foobar");
+    }
+}

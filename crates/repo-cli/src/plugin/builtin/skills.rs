@@ -1,7 +1,7 @@
 use crate::output::{bold, dim, green, red, yellow};
+use crate::progress::Spinner;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write as _;
-use std::io::Write as _;
 use std::path::Path;
 
 // ── Embedded built-in assets ───────────────────────────────────────
@@ -413,6 +413,68 @@ pub struct SkillEntry {
     pub description: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct SkillsCheckItem {
+    name: String,
+    installed: bool,
+    description: Option<String>,
+    install_command: Option<String>,
+    message: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SkillsCheckReport {
+    installed: usize,
+    missing: usize,
+    items: Vec<SkillsCheckItem>,
+}
+
+#[derive(Debug, Serialize)]
+struct SkillsExportReport {
+    exported: usize,
+    skills: Vec<SkillEntry>,
+}
+
+#[derive(Debug, Serialize)]
+struct SkillsSyncReport {
+    kept: u32,
+    added: u32,
+    removed: Vec<String>,
+    empty_sources: Vec<String>,
+    skills: Vec<SkillEntry>,
+}
+
+#[derive(Debug, Serialize)]
+struct SkillsInstallItem {
+    name: String,
+    outcome: String,
+    source: Option<String>,
+    message: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SkillsInstallReport {
+    items: Vec<SkillsInstallItem>,
+    needs_fix: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SkillsFixReport {
+    removed: Vec<RemovedSkill>,
+    kept: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct RemovedSkill {
+    name: String,
+    reason: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonError {
+    error: String,
+}
+
 fn default_scope() -> String {
     "project".into()
 }
@@ -441,6 +503,7 @@ impl SkillsConfig {
 
 pub fn run(repo_root: &Path, args: &[&str]) {
     let subcommand = args.first().copied().filter(|a| !a.starts_with('-'));
+    let json = args.contains(&"--json");
 
     if args.iter().any(|a| *a == "--help" || *a == "-h") {
         print_help();
@@ -449,16 +512,16 @@ pub fn run(repo_root: &Path, args: &[&str]) {
 
     match subcommand {
         Some("init")   => cmd_init(repo_root),
-        Some("export") => cmd_export(repo_root),
-        Some("sync")   => cmd_sync(repo_root),
-        Some("install") => cmd_install(repo_root),
-        Some("fix")    => cmd_fix(repo_root),
+        Some("export") => cmd_export(repo_root, json),
+        Some("sync")   => cmd_sync(repo_root, json),
+        Some("install") => cmd_install(repo_root, json),
+        Some("fix")    => cmd_fix(repo_root, json),
         Some("deploy") => cmd_deploy(args),
         Some(other) => {
             eprintln!("Unknown skills subcommand: {other}");
             eprintln!("Run `repo skills --help` for usage.");
         }
-        None => cmd_check(repo_root),
+        None => cmd_check(repo_root, json),
     }
 }
 
@@ -480,6 +543,7 @@ COMMANDS:
     deploy      Install all built-in skills into the agent skills ecosystem
 
 OPTIONS:
+    --json       Emit machine-readable JSON where supported
     -h, --help  Print this help message
 
 Skills are declared in .repo/skills.toml and installed via `npx skills add`.
@@ -567,10 +631,21 @@ fn cmd_init(repo_root: &Path) {
 
 // ── export ──────────────────────────────────────────────────────────
 
-fn cmd_export(repo_root: &Path) {
+fn cmd_export(repo_root: &Path, json: bool) {
     let installed = scan_installed_skills(repo_root);
 
     if installed.is_empty() {
+        if json {
+            let report = SkillsExportReport {
+                exported: 0,
+                skills: Vec::new(),
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+            );
+            return;
+        }
         println!("  No skills found in .agents/skills/");
         return;
     }
@@ -589,6 +664,18 @@ fn cmd_export(repo_root: &Path) {
     if let Err(e) = std::fs::write(&path, &content) {
         eprintln!("Error writing {}: {e}", path.display());
         std::process::exit(1);
+    }
+
+    if json {
+        let report = SkillsExportReport {
+            exported: config.skills.len(),
+            skills: config.skills,
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+        );
+        return;
     }
 
     println!("  {} wrote .repo/skills.toml", green("ok"));
@@ -610,7 +697,7 @@ fn cmd_export(repo_root: &Path) {
 // ── sync ────────────────────────────────────────────────────────
 
 #[expect(clippy::too_many_lines)]
-fn cmd_sync(repo_root: &Path) {
+fn cmd_sync(repo_root: &Path, json: bool) {
     let installed = scan_installed_skills(repo_root);
     let existing = SkillsConfig::load(repo_root);
 
@@ -659,6 +746,24 @@ fn cmd_sync(repo_root: &Path) {
 
     merged.sort_by(|a, b| a.name.cmp(&b.name));
 
+    let empty_sources: Vec<String> = merged
+        .iter()
+        .filter(|s| s.source.is_empty())
+        .map(|s| s.name.clone())
+        .collect();
+
+    let json_report = if json {
+        Some(SkillsSyncReport {
+            kept,
+            added,
+            removed: removed_names.clone(),
+            empty_sources,
+            skills: merged.clone(),
+        })
+    } else {
+        None
+    };
+
     // Calculate column width for output.
     let w_name = merged
         .iter()
@@ -668,8 +773,10 @@ fn cmd_sync(repo_root: &Path) {
         .unwrap_or(0)
         .max(4);
 
-    println!("{}", bold("Syncing skills"));
-    println!();
+    if !json {
+        println!("{}", bold("Syncing skills"));
+        println!();
+    }
 
     // Show what happened.
     for entry in &merged {
@@ -678,21 +785,25 @@ fn cmd_sync(repo_root: &Path) {
         } else {
             green("added")
         };
-        println!(
-            "  {} {:<w_name$}  {}",
-            tag,
-            entry.name,
-            dim(entry.description.as_deref().unwrap_or("")),
-        );
+        if !json {
+            println!(
+                "  {} {:<w_name$}  {}",
+                tag,
+                entry.name,
+                dim(entry.description.as_deref().unwrap_or("")),
+            );
+        }
     }
 
-    for name in &removed_names {
-        println!(
-            "  {} {:<w_name$}  {}",
-            yellow("gone"),
-            name,
-            dim("no longer installed — removed from config"),
-        );
+    if !json {
+        for name in &removed_names {
+            println!(
+                "  {} {:<w_name$}  {}",
+                yellow("gone"),
+                name,
+                dim("no longer installed — removed from config"),
+            );
+        }
     }
 
     // Write the merged config.
@@ -717,43 +828,63 @@ fn cmd_sync(repo_root: &Path) {
         std::process::exit(1);
     }
 
-    println!();
-    println!(
-        "  {} kept, {} added, {} removed",
-        kept,
-        green(&added.to_string()),
-        if removed_names.is_empty() {
-            "0".to_string()
-        } else {
-            yellow(&removed_names.len().to_string())
-        },
-    );
-    println!("  {} wrote .repo/skills.toml", green("ok"));
+    if let Some(report) = json_report {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+        );
+        return;
+    }
 
-    // Warn about empty sources.
-    let empty_sources: Vec<&str> = config
-        .skills
-        .iter()
-        .filter(|s| s.source.is_empty())
-        .map(|s| s.name.as_str())
-        .collect();
-    if !empty_sources.is_empty() {
+    if !json {
         println!();
         println!(
-            "  {} {} skill(s) have empty source — fill in so teammates can install:",
-            yellow("!!"),
-            empty_sources.len(),
+            "  {} kept, {} added, {} removed",
+            kept,
+            green(&added.to_string()),
+            if removed_names.is_empty() {
+                "0".to_string()
+            } else {
+                yellow(&removed_names.len().to_string())
+            },
         );
-        for name in &empty_sources {
-            println!("    {}", dim(name));
+        println!("  {} wrote .repo/skills.toml", green("ok"));
+
+        let empty_sources: Vec<&str> = config
+            .skills
+            .iter()
+            .filter(|s| s.source.is_empty())
+            .map(|s| s.name.as_str())
+            .collect();
+        if !empty_sources.is_empty() {
+            println!();
+            println!(
+                "  {} {} skill(s) have empty source — fill in so teammates can install:",
+                yellow("!!"),
+                empty_sources.len(),
+            );
+            for name in &empty_sources {
+                println!("    {}", dim(name));
+            }
         }
     }
 }
 
 // ── check ───────────────────────────────────────────────────────────
 
-fn cmd_check(repo_root: &Path) {
+#[expect(clippy::too_many_lines)]
+fn cmd_check(repo_root: &Path, json: bool) {
     let Some(config) = SkillsConfig::load(repo_root) else {
+        if json {
+            let report = JsonError {
+                error: "no .repo/skills.toml found".into(),
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+            );
+            return;
+        }
         println!("  {} no .repo/skills.toml found", dim("--"),);
         println!("  Run `repo skills init` to create one,");
         println!("  or `repo skills export` to snapshot installed skills.");
@@ -761,17 +892,32 @@ fn cmd_check(repo_root: &Path) {
     };
 
     if config.skills.is_empty() {
+        if json {
+            let report = SkillsCheckReport {
+                installed: 0,
+                missing: 0,
+                items: Vec::new(),
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+            );
+            return;
+        }
         println!("  No skills declared in .repo/skills.toml");
         return;
     }
 
-    println!("{}", bold("Agent skills"));
-    println!("  {}", dim("validating against .repo/skills.toml"));
-    println!();
+    if !json {
+        println!("{}", bold("Agent skills"));
+        println!("  {}", dim("validating against .repo/skills.toml"));
+        println!();
+    }
 
     let skills_dir = repo_root.join(".agents").join("skills");
     let mut pass = 0u32;
     let mut fail = 0u32;
+    let mut items = Vec::new();
 
     let w_name = config
         .skills
@@ -786,29 +932,53 @@ fn cmd_check(repo_root: &Path) {
         let skill_md = skill_path.join("SKILL.md");
 
         if skill_md.is_file() {
-            println!(
-                "  {} {:<w_name$}  {}",
-                green("ok"),
-                entry.name,
-                dim(entry.description.as_deref().unwrap_or("")),
-            );
+            items.push(SkillsCheckItem {
+                name: entry.name.clone(),
+                installed: true,
+                description: entry.description.clone(),
+                install_command: None,
+                message: None,
+            });
+            if !json {
+                println!(
+                    "  {} {:<w_name$}  {}",
+                    green("ok"),
+                    entry.name,
+                    dim(entry.description.as_deref().unwrap_or("")),
+                );
+            }
             pass += 1;
         } else {
-            println!(
-                "  {} {:<w_name$}  {}",
-                red("!!"),
-                entry.name,
-                red("not installed"),
-            );
-
-            // Show install command.
-            if let Some(install_cmd) = build_install_cmd(entry) {
+            let install_command = build_install_cmd(entry);
+            items.push(SkillsCheckItem {
+                name: entry.name.clone(),
+                installed: false,
+                description: entry.description.clone(),
+                install_command: install_command.clone(),
+                message: Some(if install_command.is_some() {
+                    "not installed".into()
+                } else {
+                    "fill in 'source' in .repo/skills.toml to enable install".into()
+                }),
+            });
+            if !json {
                 println!(
-                    "    {:<w_name$}  {}",
-                    "",
-                    dim(&format!("install: {install_cmd}")),
+                    "  {} {:<w_name$}  {}",
+                    red("!!"),
+                    entry.name,
+                    red("not installed"),
                 );
-            } else {
+            }
+
+            if let Some(install_cmd) = install_command {
+                if !json {
+                    println!(
+                        "    {:<w_name$}  {}",
+                        "",
+                        dim(&format!("install: {install_cmd}")),
+                    );
+                }
+            } else if !json {
                 println!(
                     "    {:<w_name$}  {}",
                     "",
@@ -820,23 +990,43 @@ fn cmd_check(repo_root: &Path) {
         }
     }
 
-    println!();
-    println!(
-        "  {} installed, {} missing",
-        green(&pass.to_string()),
+    if json {
+        let report = SkillsCheckReport {
+            installed: pass as usize,
+            missing: fail as usize,
+            items,
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+        );
         if fail > 0 {
-            red(&fail.to_string())
-        } else {
-            fail.to_string()
-        },
-    );
+            std::process::exit(1);
+        }
+        return;
+    }
 
-    if fail > 0 {
+    if !json {
         println!();
         println!(
-            "  Run {} to install missing skills.",
-            dim("repo skills install"),
+            "  {} installed, {} missing",
+            green(&pass.to_string()),
+            if fail > 0 {
+                red(&fail.to_string())
+            } else {
+                fail.to_string()
+            },
         );
+        if fail > 0 {
+            println!();
+            println!(
+                "  Run {} to install missing skills.",
+                dim("repo skills install"),
+            );
+        }
+    }
+
+    if fail > 0 {
         std::process::exit(1);
     }
 }
@@ -888,8 +1078,19 @@ fn run_install(entry: &SkillEntry) -> InstallOutcome {
     }
 }
 
-fn cmd_install(repo_root: &Path) {
+#[expect(clippy::too_many_lines)]
+fn cmd_install(repo_root: &Path, json: bool) {
     let Some(config) = SkillsConfig::load(repo_root) else {
+        if json {
+            let report = JsonError {
+                error: "no .repo/skills.toml found".into(),
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+            );
+            std::process::exit(1);
+        }
         eprintln!("  No .repo/skills.toml found. Run `repo skills init` first.");
         std::process::exit(1);
     };
@@ -903,12 +1104,25 @@ fn cmd_install(repo_root: &Path) {
         .collect();
 
     if missing.is_empty() {
+        if json {
+            let report = SkillsInstallReport {
+                items: Vec::new(),
+                needs_fix: Vec::new(),
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+            );
+            return;
+        }
         println!("  {} all skills are installed", green("ok"));
         return;
     }
 
-    println!("{} {} missing skill(s)", bold("Installing"), missing.len());
-    println!();
+    if !json {
+        println!("{} {} missing skill(s)", bold("Installing"), missing.len());
+        println!();
+    }
 
     let w_name = missing
         .iter()
@@ -918,56 +1132,115 @@ fn cmd_install(repo_root: &Path) {
         .max(4);
 
     let mut needs_fix: Vec<&str> = Vec::new();
+    let mut items = Vec::new();
 
     for entry in &missing {
-        match run_install(entry) {
+        let mut spinner = Spinner::start(format!("installing {}", entry.name));
+        let outcome = run_install(entry);
+        spinner.finish("");
+
+        match outcome {
             InstallOutcome::Installed => {
-                println!("  {} {}", green("ok"), entry.name);
+                items.push(SkillsInstallItem {
+                    name: entry.name.clone(),
+                    outcome: "installed".into(),
+                    source: Some(entry.source.clone()),
+                    message: None,
+                });
+                if !json {
+                    println!("  {} {}", green("ok"), entry.name);
+                }
             }
             InstallOutcome::NoSource => {
-                println!(
-                    "  {} {:<w_name$}  {}",
-                    yellow("!!"),
-                    entry.name,
-                    yellow("no source — set 'source' in .repo/skills.toml or run: repo skills fix"),
-                );
+                items.push(SkillsInstallItem {
+                    name: entry.name.clone(),
+                    outcome: "no_source".into(),
+                    source: None,
+                    message: Some("set 'source' in .repo/skills.toml".into()),
+                });
+                if !json {
+                    println!(
+                        "  {} {:<w_name$}  {}",
+                        yellow("!!"),
+                        entry.name,
+                        yellow("no source — set 'source' in .repo/skills.toml or run: repo skills fix"),
+                    );
+                }
                 needs_fix.push(&entry.name);
             }
             InstallOutcome::NotFound { ref source } => {
-                println!(
-                    "  {} {:<w_name$}  {}",
-                    red("!!"),
-                    entry.name,
-                    red(&format!("skill not found in {source}")),
-                );
-                println!(
-                    "    {:<w_name$}  {}",
-                    "",
-                    dim("fix: correct the 'source'/'skill' fields in .repo/skills.toml, or run: repo skills fix"),
-                );
+                items.push(SkillsInstallItem {
+                    name: entry.name.clone(),
+                    outcome: "not_found".into(),
+                    source: Some(source.clone()),
+                    message: Some(format!("skill not found in {source}")),
+                });
+                if !json {
+                    println!(
+                        "  {} {:<w_name$}  {}",
+                        red("!!"),
+                        entry.name,
+                        red(&format!("skill not found in {source}")),
+                    );
+                    println!(
+                        "    {:<w_name$}  {}",
+                        "",
+                        dim("fix: correct the 'source'/'skill' fields in .repo/skills.toml, or run: repo skills fix"),
+                    );
+                }
                 needs_fix.push(&entry.name);
             }
             InstallOutcome::Failed { ref exit_status } => {
-                eprintln!(
-                    "  {} {:<w_name$}  {}",
-                    red("!!"),
-                    entry.name,
-                    red(&format!("install failed ({exit_status})")),
-                );
+                items.push(SkillsInstallItem {
+                    name: entry.name.clone(),
+                    outcome: "failed".into(),
+                    source: Some(entry.source.clone()),
+                    message: Some(format!("install failed ({exit_status})")),
+                });
+                if !json {
+                    eprintln!(
+                        "  {} {:<w_name$}  {}",
+                        red("!!"),
+                        entry.name,
+                        red(&format!("install failed ({exit_status})")),
+                    );
+                }
             }
             InstallOutcome::Error { ref message } => {
-                eprintln!(
-                    "  {} {:<w_name$}  {}",
-                    red("!!"),
-                    entry.name,
-                    red(&format!("could not run install: {message}")),
-                );
+                items.push(SkillsInstallItem {
+                    name: entry.name.clone(),
+                    outcome: "error".into(),
+                    source: Some(entry.source.clone()),
+                    message: Some(format!("could not run install: {message}")),
+                });
+                if !json {
+                    eprintln!(
+                        "  {} {:<w_name$}  {}",
+                        red("!!"),
+                        entry.name,
+                        red(&format!("could not run install: {message}")),
+                    );
+                }
             }
         }
-        println!();
+        if !json {
+            println!();
+        }
     }
 
-    if !needs_fix.is_empty() {
+    if json {
+        let report = SkillsInstallReport {
+            items,
+            needs_fix: needs_fix.iter().map(|name| (*name).to_string()).collect(),
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+        );
+        return;
+    }
+
+    if !json && !needs_fix.is_empty() {
         println!(
             "  {} {} entry/entries cannot be installed as configured.",
             yellow("!!"),
@@ -982,19 +1255,43 @@ fn cmd_install(repo_root: &Path) {
 
 // ── fix ─────────────────────────────────────────────────────────────
 
-fn cmd_fix(repo_root: &Path) {
+#[expect(clippy::too_many_lines)]
+fn cmd_fix(repo_root: &Path, json: bool) {
     let Some(config) = SkillsConfig::load(repo_root) else {
+        if json {
+            let report = JsonError {
+                error: "no .repo/skills.toml found".into(),
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+            );
+            std::process::exit(1);
+        }
         eprintln!("  No .repo/skills.toml found. Run `repo skills init` first.");
         std::process::exit(1);
     };
 
     if config.skills.is_empty() {
+        if json {
+            let report = SkillsFixReport {
+                removed: Vec::new(),
+                kept: Vec::new(),
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+            );
+            return;
+        }
         println!("  {} .repo/skills.toml is empty, nothing to fix", dim("--"));
         return;
     }
 
-    println!("{}", bold("Checking skills for fixable issues"));
-    println!();
+    if !json {
+        println!("{}", bold("Checking skills for fixable issues"));
+        println!();
+    }
 
     let w_name = config
         .skills
@@ -1010,61 +1307,89 @@ fn cmd_fix(repo_root: &Path) {
     for entry in &config.skills {
         // Empty source — cannot install without user providing one.
         if entry.source.is_empty() {
-            println!(
-                "  {} {:<w_name$}  {}",
-                yellow("rm"),
-                entry.name,
-                yellow("no source field — cannot install"),
-            );
+            if !json {
+                println!(
+                    "  {} {:<w_name$}  {}",
+                    yellow("rm"),
+                    entry.name,
+                    yellow("no source field — cannot install"),
+                );
+            }
             removed.push((entry.name.clone(), "no source"));
             continue;
         }
 
         // Probe: run the install command and check if skill is not found.
-        print!("  {} {:<w_name$}  checking... ", dim(".."), entry.name);
-        // Flush stdout so the "checking..." appears before the (slow) npx call.
-        let _ = std::io::stdout().flush();
-
+        let mut spinner = Spinner::start(format!("checking {}", entry.name));
         let outcome = run_install(entry);
+        spinner.finish("");
         match outcome {
             InstallOutcome::Installed => {
-                println!("{}", green("ok (now installed)"));
+                if !json {
+                    println!("{}", green("ok (now installed)"));
+                }
                 keep.push(entry.clone());
             }
             InstallOutcome::NotFound { ref source } => {
-                println!("{}", red(&format!("skill not found in {source}")));
-                println!(
-                    "    {:<w_name$}  {}",
-                    "",
-                    dim("removed — fix source/skill fields to re-add"),
-                );
+                if !json {
+                    println!("{}", red(&format!("skill not found in {source}")));
+                    println!(
+                        "    {:<w_name$}  {}",
+                        "",
+                        dim("removed — fix source/skill fields to re-add"),
+                    );
+                }
                 removed.push((entry.name.clone(), "skill not found at source"));
             }
             InstallOutcome::NoSource => {
-                // Already handled above; shouldn't reach here.
-                println!("{}", yellow("no source"));
+                if !json {
+                    println!("{}", yellow("no source"));
+                }
                 removed.push((entry.name.clone(), "no source"));
             }
             InstallOutcome::Failed { ref exit_status } => {
-                println!("{}", yellow(&format!("install failed ({exit_status}) — kept")));
-                println!(
-                    "    {:<w_name$}  {}",
-                    "",
-                    dim("kept — failure may be transient (network, auth). Re-run to retry."),
-                );
+                if !json {
+                    println!("{}", yellow(&format!("install failed ({exit_status}) — kept")));
+                    println!(
+                        "    {:<w_name$}  {}",
+                        "",
+                        dim("kept — failure may be transient (network, auth). Re-run to retry."),
+                    );
+                }
                 keep.push(entry.clone());
             }
             InstallOutcome::Error { ref message } => {
-                println!("{}", yellow(&format!("could not run install: {message} — kept")));
+                if !json {
+                    println!("{}", yellow(&format!("could not run install: {message} — kept")));
+                }
                 keep.push(entry.clone());
             }
         }
     }
 
-    println!();
+    if json {
+        let report = SkillsFixReport {
+            removed: removed
+                .iter()
+                .map(|(name, reason)| RemovedSkill {
+                    name: name.clone(),
+                    reason: (*reason).to_string(),
+                })
+                .collect(),
+            kept: keep.iter().map(|entry| entry.name.clone()).collect(),
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+        );
+        return;
+    }
 
     if removed.is_empty() {
-        println!("  {} nothing to fix — all entries look valid", green("ok"));
+        if !json {
+            println!();
+            println!("  {} nothing to fix — all entries look valid", green("ok"));
+        }
         return;
     }
 
@@ -1084,19 +1409,22 @@ fn cmd_fix(repo_root: &Path) {
         std::process::exit(1);
     }
 
-    println!(
-        "  {} removed {} entry/entries from .repo/skills.toml:",
-        green("ok"),
-        removed.len(),
-    );
-    for (name, reason) in &removed {
-        println!("    {} — {}", name, dim(reason));
+    if !json {
+        println!();
+        println!(
+            "  {} removed {} entry/entries from .repo/skills.toml:",
+            green("ok"),
+            removed.len(),
+        );
+        for (name, reason) in &removed {
+            println!("    {} — {}", name, dim(reason));
+        }
+        println!();
+        println!(
+            "  Add corrected entries back manually, or re-run {} after editing.",
+            dim("repo skills install"),
+        );
     }
-    println!();
-    println!(
-        "  Add corrected entries back manually, or re-run {} after editing.",
-        dim("repo skills install"),
-    );
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────

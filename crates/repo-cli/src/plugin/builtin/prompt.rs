@@ -1,10 +1,12 @@
 use crate::output::{bold, cyan, dim, green};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
 // ── Prompt model ────────────────────────────────────────────────────
 
+#[derive(Clone, Debug, Serialize)]
 pub struct Prompt {
     pub name: String,
     pub description: String,
@@ -63,6 +65,7 @@ fn load_defaults() -> Vec<Prompt> {
 
 pub fn run(repo_root: &Path, args: &[&str]) {
     let subcommand = args.first().copied().filter(|a| !a.starts_with('-'));
+    let json = args.contains(&"--json");
 
     if args.iter().any(|a| *a == "--help" || *a == "-h") {
         print_help();
@@ -73,7 +76,7 @@ pub fn run(repo_root: &Path, args: &[&str]) {
 
     match subcommand {
         Some("init") => cmd_init(&prompts_dir),
-        Some("list") | None => cmd_list(&prompts_dir, args),
+        Some("list") | None => cmd_list(&prompts_dir, args, json),
         Some(name) => cmd_show(&prompts_dir, name),
     }
 }
@@ -93,6 +96,7 @@ COMMANDS:
 
 OPTIONS:
     --tag <TAG>  Filter by tag (e.g. plan, format, review)
+    --json       Emit machine-readable JSON for `list`
     -h, --help   Print this help message
 
 Built-in prompts are always available. User prompts in .repo/prompts/
@@ -154,37 +158,39 @@ fn cmd_init(prompts_dir: &Path) {
 
 // ── list ────────────────────────────────────────────────────────────
 
-fn cmd_list(prompts_dir: &Path, args: &[&str]) {
-    let prompts = load_merged(prompts_dir);
-
-    if prompts.is_empty() {
+fn cmd_list(prompts_dir: &Path, args: &[&str], json: bool) {
+    let all_prompts = load_merged(prompts_dir);
+    if all_prompts.is_empty() {
+        if json {
+            println!("[]");
+            return;
+        }
         println!("No prompts available.");
         return;
     }
 
-    // Optional --tag filter.
-    let tag_filter = args
-        .windows(2)
-        .find(|w| w[0] == "--tag")
-        .map(|w| w[1].to_lowercase());
-
-    let filtered: Vec<&Prompt> = prompts
-        .iter()
-        .filter(|p| {
-            if let Some(ref tag) = tag_filter {
-                p.tags.iter().any(|t| t.to_lowercase() == *tag)
-            } else {
-                true
-            }
-        })
-        .collect();
+    let filter = tag_filter(args);
+    let filtered = list_prompts(prompts_dir, filter.as_deref());
 
     if filtered.is_empty() {
+        if json {
+            println!("[]");
+            return;
+        }
         println!("No prompts match the given filter.");
         return;
     }
 
-    print_table(&filtered);
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&filtered).unwrap_or_else(|_| "[]".to_string())
+        );
+        return;
+    }
+
+    let refs = filtered.iter().collect::<Vec<_>>();
+    print_table(&refs);
 }
 
 // ── show ────────────────────────────────────────────────────────────
@@ -245,6 +251,26 @@ fn load_merged(prompts_dir: &Path) -> Vec<Prompt> {
 
     defaults.sort_by(|a, b| a.name.cmp(&b.name));
     defaults
+}
+
+#[must_use]
+pub fn list_prompts(prompts_dir: &Path, tag: Option<&str>) -> Vec<Prompt> {
+    let prompts = load_merged(prompts_dir);
+
+    let Some(tag) = tag.map(str::to_lowercase) else {
+        return prompts;
+    };
+
+    prompts
+        .into_iter()
+        .filter(|prompt| prompt.tags.iter().any(|value| value.to_lowercase() == tag))
+        .collect()
+}
+
+fn tag_filter(args: &[&str]) -> Option<String> {
+    args.windows(2)
+        .find(|w| w[0] == "--tag")
+        .map(|w| w[1].to_lowercase())
 }
 
 // ── Scanning & parsing ──────────────────────────────────────────────

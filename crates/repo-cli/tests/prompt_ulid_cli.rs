@@ -126,6 +126,20 @@ fn prompt_tag_filter_returns_matching_prompt_only() {
 }
 
 #[test]
+fn prompt_list_json_emits_machine_readable_prompts() {
+    let repo_root = temp_repo("prompt-json");
+    let output = run_repo(&repo_root, &["prompt", "list", "--json"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    let prompts = value.as_array().unwrap();
+    assert!(prompts.iter().any(|prompt| prompt["name"] == "format-plan"));
+    assert!(prompts.iter().all(|prompt| prompt["body"].is_string()));
+
+    cleanup(repo_root);
+}
+
+#[test]
 fn prompt_unknown_name_returns_non_zero_with_guidance() {
     let repo_root = temp_repo("prompt-unknown");
     let output = run_repo(&repo_root, &["prompt", "missing-prompt"]);

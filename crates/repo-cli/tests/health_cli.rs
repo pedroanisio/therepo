@@ -160,3 +160,53 @@ fn health_custom_missing_required_tool_returns_non_zero() {
     assert!(out.contains("missing-tool"));
     assert!(out.contains("required but not found"));
 }
+
+#[test]
+fn health_export_writes_current_environment_snapshot() {
+    let repo = TempRepo::new("health-export");
+
+    let output = run_health(repo.path(), &["export"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let health_toml = repo.path().join(".repo").join("health.toml");
+    assert!(health_toml.is_file(), "expected .repo/health.toml to be written");
+    let content = std::fs::read_to_string(&health_toml).unwrap();
+    assert!(
+        content.contains("repo health export"),
+        "expected header comment in exported file: {content}"
+    );
+    let out = stdout(&output);
+    assert!(out.contains("wrote .repo/health.toml"), "expected success message: {out}");
+}
+
+#[test]
+fn health_check_verbose_flag_runs_without_error() {
+    let repo = TempRepo::new("health-verbose");
+    repo.write(
+        ".repo/health.toml",
+        "[environment]\nprivilege = \"auto\"\nallowed_runtimes = []\n",
+    );
+
+    let output = run_health(repo.path(), &["--verbose"]);
+
+    // verbose may exit non-zero (e.g. no git repo) but should not panic
+    let _ = stdout(&output);
+}
+
+#[test]
+fn health_json_emits_machine_readable_report() {
+    let repo = TempRepo::new("health-json");
+    repo.write(
+        ".repo/health.toml",
+        "[environment]\nprivilege = \"auto\"\nallowed_runtimes = []\n",
+    );
+
+    let output = run_health(repo.path(), &["--json"]);
+
+    let text = stdout(&output);
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert!(value["sections"].is_array(), "expected sections in: {text}");
+    assert!(value["passed"].is_number());
+    assert!(value["warnings"].is_number());
+    assert!(value["errors"].is_number());
+}

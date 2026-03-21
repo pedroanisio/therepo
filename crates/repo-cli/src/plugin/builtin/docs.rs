@@ -1271,4 +1271,123 @@ mod tests {
             fs::remove_dir_all(dir).ok();
         }
     }
+
+    mod progress {
+        use super::*;
+
+        fn phase(done: usize, total: usize) -> PlanPhase {
+            PlanPhase { name: "p".into(), done, total }
+        }
+
+        // ── phase_status ────────────────────────────────────────────
+
+        #[test]
+        fn phase_status_unknown_when_no_tasks() {
+            assert_eq!(phase_status(&phase(0, 0)), "unknown");
+        }
+
+        #[test]
+        fn phase_status_done_when_all_complete() {
+            assert_eq!(phase_status(&phase(3, 3)), "done");
+        }
+
+        #[test]
+        fn phase_status_partial_when_some_done() {
+            assert_eq!(phase_status(&phase(1, 3)), "partial");
+        }
+
+        #[test]
+        fn phase_status_pending_when_none_done() {
+            assert_eq!(phase_status(&phase(0, 3)), "pending");
+        }
+
+        // ── step_progress ───────────────────────────────────────────
+
+        #[test]
+        fn step_progress_returns_zero_one_when_no_budget() {
+            let step = serde_json::json!({ "id": "a" });
+            assert_eq!(step_progress(&step), (0, 1));
+        }
+
+        #[test]
+        fn step_progress_reads_val_req_and_val_done() {
+            let step = serde_json::json!({
+                "validationBudget": { "valReq": 4, "valDone": 2 }
+            });
+            assert_eq!(step_progress(&step), (2, 4));
+        }
+
+        #[test]
+        fn step_progress_reads_required_and_performed() {
+            let step = serde_json::json!({
+                "validationBudget": { "required": 3, "performed": 1 }
+            });
+            assert_eq!(step_progress(&step), (1, 3));
+        }
+
+        // ── plan_progress ───────────────────────────────────────────
+
+        #[test]
+        fn plan_progress_sums_across_phases() {
+            let phases = vec![phase(2, 3), phase(1, 1)];
+            let p = plan_progress(&phases);
+            assert_eq!(p.total_phases, 2);
+            assert_eq!(p.complete_phases, 1);
+            assert_eq!(p.done_tasks, 3);
+            assert_eq!(p.total_tasks, 4);
+        }
+
+        // ── format_progress_summary ─────────────────────────────────
+
+        #[test]
+        fn format_progress_summary_returns_dash_for_empty() {
+            assert_eq!(format_progress_summary(&[]), "\u{2014}");
+        }
+
+        #[test]
+        fn format_progress_summary_formats_counts() {
+            let phases = vec![phase(2, 2), phase(0, 1)];
+            let s = format_progress_summary(&phases);
+            assert!(s.contains("1/2 phases"), "got: {s}");
+            assert!(s.contains("2/3 tasks"), "got: {s}");
+        }
+
+        // ── progress_bar ────────────────────────────────────────────
+
+        #[test]
+        fn progress_bar_returns_empty_bar_for_zero_total() {
+            let bar = progress_bar(0, 0, 5);
+            // Should contain spaces (dimmed empty bar), no filled blocks.
+            assert!(bar.contains('['), "got: {bar}");
+        }
+
+        #[test]
+        fn progress_bar_fully_filled_for_complete() {
+            let bar = progress_bar(4, 4, 4);
+            assert!(bar.contains('\u{2588}'), "expected filled blocks in: {bar}");
+        }
+
+        #[test]
+        fn progress_bar_partial_for_in_progress() {
+            let bar = progress_bar(2, 4, 4);
+            assert!(bar.contains('\u{2588}'), "expected some filled: {bar}");
+            assert!(bar.contains('\u{2591}'), "expected some empty: {bar}");
+        }
+
+        #[test]
+        fn progress_bar_all_empty_for_zero_done() {
+            let bar = progress_bar(0, 4, 4);
+            assert!(bar.contains('\u{2591}'), "expected empty blocks in: {bar}");
+        }
+
+        // ── truncate_title word-boundary ────────────────────────────
+
+        #[test]
+        fn truncate_title_breaks_at_word_boundary() {
+            let long = "one two three four five six seven eight nine ten eleven";
+            let truncated = truncate_title(long, 20);
+            assert!(truncated.ends_with("..."), "got: {truncated}");
+            assert!(truncated.len() <= 23, "got: {truncated}"); // max + "..."
+        }
+    }
 }

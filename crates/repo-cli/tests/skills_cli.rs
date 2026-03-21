@@ -206,6 +206,25 @@ fn check_with_all_declared_skills_installed_succeeds() {
 }
 
 #[test]
+fn check_json_emits_machine_readable_status() {
+    let repo = TempRepo::new("skills-check-json");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    std::fs::write(
+        repo_dir.join("skills.toml"),
+        "[[skills]]\nname = \"my-skill\"\nsource = \"owner/repo\"\nscope = \"project\"\n",
+    )
+    .unwrap();
+
+    let output = run_skills(repo.path(), &["--json"]);
+
+    assert!(!output.status.success());
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(value["missing"], 1);
+    assert_eq!(value["items"][0]["name"], "my-skill");
+}
+
+#[test]
 fn check_with_empty_manifest_reports_nothing_declared() {
     let repo = TempRepo::new("skills-check-empty-manifest");
     let repo_dir = repo.path().join(".repo");
@@ -239,6 +258,22 @@ fn export_with_installed_skills_writes_config() {
     );
     let text = stdout(&output);
     assert!(text.contains("my-skill"), "expected skill name in output: {text}");
+}
+
+#[test]
+fn export_json_writes_config_and_emits_report() {
+    let repo = TempRepo::new("skills-export-json");
+    let skill_dir = repo.path().join(".agents").join("skills").join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "---\nname: my-skill\n---\nbody\n").unwrap();
+
+    let output = run_skills(repo.path(), &["export", "--json"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    assert!(repo.path().join(".repo").join("skills.toml").is_file());
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(value["exported"], 1);
+    assert_eq!(value["skills"][0]["name"], "my-skill");
 }
 
 #[test]
@@ -284,6 +319,22 @@ fn sync_with_existing_manifest_preserves_source() {
     );
     let text = stdout(&output);
     assert!(text.contains("kept"), "expected 'kept' in sync output: {text}");
+}
+
+#[test]
+fn sync_json_writes_config_and_emits_report() {
+    let repo = TempRepo::new("skills-sync-json");
+    let skill_dir = repo.path().join(".agents").join("skills").join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "---\nname: my-skill\n---\nbody\n").unwrap();
+
+    let output = run_skills(repo.path(), &["sync", "--json"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    assert!(repo.path().join(".repo").join("skills.toml").is_file());
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(value["added"], 1);
+    assert_eq!(value["skills"][0]["name"], "my-skill");
 }
 
 #[test]
@@ -333,6 +384,130 @@ fn unknown_subcommand_prints_error_to_stderr() {
     assert!(
         text.contains("Unknown skills subcommand") || text.contains("bogus-subcommand"),
         "expected unknown subcommand error in stderr: {text}"
+    );
+}
+
+#[test]
+fn install_json_when_all_skills_present_emits_empty_report() {
+    let repo = TempRepo::new("skills-install-json-all-ok");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    std::fs::write(
+        repo_dir.join("skills.toml"),
+        "[[skills]]\nname = \"my-skill\"\nsource = \"owner/repo\"\nscope = \"project\"\n",
+    )
+    .unwrap();
+    let skill_dir = repo.path().join(".agents").join("skills").join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "---\nname: my-skill\n---\nbody\n").unwrap();
+
+    let output = run_skills(repo.path(), &["install", "--json"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(value["items"].as_array().map(Vec::len), Some(0));
+    assert_eq!(value["needs_fix"].as_array().map(Vec::len), Some(0));
+}
+
+#[test]
+fn install_json_without_manifest_emits_error_json() {
+    let repo = TempRepo::new("skills-install-json-missing");
+    let output = run_skills(repo.path(), &["install", "--json"]);
+
+    assert!(!output.status.success());
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert!(value["error"].is_string(), "expected error field in: {}", stdout(&output));
+}
+
+#[test]
+fn fix_json_without_manifest_emits_error_json() {
+    let repo = TempRepo::new("skills-fix-json-missing");
+    let output = run_skills(repo.path(), &["fix", "--json"]);
+
+    assert!(!output.status.success());
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert!(value["error"].is_string(), "expected error field in: {}", stdout(&output));
+}
+
+#[test]
+fn fix_json_with_empty_manifest_emits_empty_report() {
+    let repo = TempRepo::new("skills-fix-json-empty");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    std::fs::write(repo_dir.join("skills.toml"), "").unwrap();
+
+    let output = run_skills(repo.path(), &["fix", "--json"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(value["removed"].as_array().map(Vec::len), Some(0));
+    assert_eq!(value["kept"].as_array().map(Vec::len), Some(0));
+}
+
+#[test]
+fn fix_json_with_empty_source_removes_entry() {
+    let repo = TempRepo::new("skills-fix-json-empty-source");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    std::fs::write(
+        repo_dir.join("skills.toml"),
+        "[[skills]]\nname = \"orphan\"\nsource = \"\"\nscope = \"project\"\n",
+    )
+    .unwrap();
+
+    let output = run_skills(repo.path(), &["fix", "--json"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    let removed = value["removed"].as_array().unwrap();
+    assert_eq!(removed.len(), 1);
+    assert_eq!(removed[0]["name"], "orphan");
+}
+
+#[test]
+fn check_json_with_all_installed_emits_zero_missing() {
+    let repo = TempRepo::new("skills-check-json-ok");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    std::fs::write(
+        repo_dir.join("skills.toml"),
+        "[[skills]]\nname = \"my-skill\"\nsource = \"owner/repo\"\nscope = \"project\"\n",
+    )
+    .unwrap();
+    let skill_dir = repo.path().join(".agents").join("skills").join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "---\nname: my-skill\n---\nbody\n").unwrap();
+
+    let output = run_skills(repo.path(), &["--json"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(value["missing"], 0);
+    assert_eq!(value["installed"], 1);
+}
+
+#[test]
+fn deploy_with_force_overwrites_existing_skills() {
+    let home = TempRepo::new("skills-deploy-force");
+    // First deploy
+    let out1 = run_skills_env(
+        home.path(),
+        &["deploy"],
+        &[("HOME", home.path().to_str().unwrap())],
+    );
+    assert!(out1.status.success(), "first deploy failed: {}", stderr(&out1));
+
+    // Second deploy with --force should succeed and overwrite
+    let out2 = run_skills_env(
+        home.path(),
+        &["deploy", "--force"],
+        &[("HOME", home.path().to_str().unwrap())],
+    );
+    assert!(out2.status.success(), "force deploy failed: {}", stderr(&out2));
+    let text = stdout(&out2);
+    assert!(
+        !text.contains("already installed"),
+        "with --force, nothing should be skipped: {text}"
     );
 }
 
