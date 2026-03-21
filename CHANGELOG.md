@@ -1,0 +1,27 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on Keep a Changelog and this project is intended to follow Semantic Versioning.
+
+## [Unreleased]
+
+### Added
+
+- top-level project documentation set
+- contributor workflow guide
+- CLI command reference
+- architecture overview
+
+### Changed
+
+- repository documentation is now split between root docs and crate-level docs
+
+## [0.1.0]
+
+### Added
+
+- initial Rust CLI implementation under `crates/repo-cli`
+- built-in commands for `docs`, `health`, `skills`, `prompt`, `ulid`, and `plugins`
+- embedded default assets for prompts, skills, schemas, references, and traits
+- plugin discovery for built-in and repository-local plugins
