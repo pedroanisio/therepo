@@ -122,6 +122,111 @@ fn status_filter_returns_only_matching_docs() {
 }
 
 #[test]
+fn docs_overview_with_designs_shows_nonzero_count() {
+    let repo = TempRepo::new("docs-overview-with-docs");
+    repo.write(
+        "_docs/designs/2026-03-21-test.md",
+        &design_doc("Test Design", "accepted", "2026-03-21"),
+    );
+
+    // `repo docs` with no subcommand calls list_all()
+    let output = run_docs(repo.path(), &[]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("docs overview"), "expected header in: {text}");
+    assert!(text.contains("designs"), "expected kind in: {text}");
+    // The count line should show "1 doc(s)"
+    assert!(text.contains('1'), "expected count in: {text}");
+}
+
+#[test]
+fn docs_overview_empty_shows_header_and_empty_counts() {
+    let repo = TempRepo::new("docs-overview-empty");
+
+    let output = run_docs(repo.path(), &[]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("docs overview"), "expected header in: {text}");
+}
+
+#[test]
+fn status_filter_with_no_match_shows_empty_message() {
+    let repo = TempRepo::new("docs-filter-empty");
+    repo.write(
+        "_docs/designs/2026-03-21-accepted.md",
+        &design_doc("Accepted Design", "accepted", "2026-03-21"),
+    );
+
+    let output = run_docs(repo.path(), &["designs", "--status", "draft"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(
+        text.contains("No matching") || text.contains("0 doc") || text.contains("No designs match"),
+        "expected empty-filter message in: {text}"
+    );
+}
+
+#[test]
+fn complete_plan_progress_shows_all_tasks_done() {
+    // Regression: plans with metadata.status=complete but valDone=0 in every
+    // step were showing "0/N tasks" in the PROGRESS column.
+    let repo = TempRepo::new("plans-complete-progress");
+    repo.write(
+        ".repo/storage/plan-done/plan-done.json",
+        r#"{
+          "schemaVersion": "0.3.0",
+          "metadata": {
+            "planId": "plan-done",
+            "version": "1.0.0",
+            "status": "complete",
+            "createdAt": "2026-03-20T10:00:00Z",
+            "updatedAt": "2026-03-20T12:00:00Z"
+          },
+          "problem": {
+            "successOutcome": "Widget is wired up"
+          },
+          "steps": [
+            {
+              "id": "step_a",
+              "title": "Do the thing",
+              "size": "S",
+              "validationBudget": { "valReq": 2, "valDone": 0 }
+            },
+            {
+              "id": "step_b",
+              "title": "Check the thing",
+              "size": "M",
+              "validationBudget": { "valReq": 1, "valDone": 0 }
+            }
+          ],
+          "executionOrder": { "sequence": ["step_a", "step_b"] }
+        }"#,
+    );
+
+    let output = run_docs(repo.path(), &["plans", "--json"]);
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+
+    let json: Value = serde_json::from_str(&stdout(&output)).unwrap();
+    let docs = json.as_array().expect("expected JSON array");
+    assert_eq!(docs.len(), 1);
+
+    let doc = docs[0].as_object().unwrap();
+    assert_eq!(doc.get("status").and_then(Value::as_str), Some("complete"));
+
+    let progress = doc.get("progress").and_then(Value::as_object).unwrap();
+    let done_tasks = progress.get("done_tasks").and_then(Value::as_u64).unwrap_or(0);
+    let total_tasks = progress.get("total_tasks").and_then(Value::as_u64).unwrap_or(0);
+    assert!(total_tasks > 0, "expected non-zero total_tasks");
+    assert_eq!(
+        done_tasks, total_tasks,
+        "complete plan should show all tasks done, got {done_tasks}/{total_tasks}"
+    );
+}
+
+#[test]
 fn json_output_emits_machine_readable_docs() {
     let repo = TempRepo::new("docs-json");
     repo.write(

@@ -469,8 +469,19 @@ fn parse_plan_json(content: &str, path: &Path) -> Option<Doc> {
         });
 
     // Extract steps as pseudo-phases grouped by execution order.
-    let phases = extract_json_phases(obj);
+    let mut phases = extract_json_phases(obj);
     let status = derive_plan_status(obj, &phases);
+
+    // If the plan is explicitly marked complete at the metadata level, reflect
+    // that in per-phase progress — individual step valDone fields are often
+    // left at 0 even after the plan finishes.
+    if status == "complete" {
+        for phase in &mut phases {
+            if phase.done < phase.total {
+                phase.done = phase.total;
+            }
+        }
+    }
 
     Some(Doc {
         file: path
@@ -490,12 +501,24 @@ fn derive_plan_status(
     obj: &serde_json::Map<String, serde_json::Value>,
     phases: &[PlanPhase],
 ) -> String {
+    // "complete" always wins — even if an explicit status is set.
     if !phases.is_empty() {
         let all_complete = phases.iter().all(|p| p.total > 0 && p.done == p.total);
         if all_complete {
             return "complete".into();
         }
+    }
 
+    // Explicit metadata.status overrides all derived logic.
+    if let Some(explicit) = obj
+        .get("metadata")
+        .and_then(|m| m.get("status"))
+        .and_then(|v| v.as_str())
+    {
+        return explicit.to_string();
+    }
+
+    if !phases.is_empty() {
         let any_progress = phases.iter().any(|p| p.done > 0);
         if any_progress {
             return "active".into();
@@ -1388,6 +1411,37 @@ mod tests {
             let truncated = truncate_title(long, 20);
             assert!(truncated.ends_with("..."), "got: {truncated}");
             assert!(truncated.len() <= 23, "got: {truncated}"); // max + "..."
+        }
+
+        // ── color_progress_summary ──────────────────────────────────
+
+        #[test]
+        fn color_progress_summary_returns_dash_for_empty_phases() {
+            let result = color_progress_summary(&[]);
+            assert!(result.contains('\u{2014}'), "expected em-dash in: {result}");
+        }
+
+        #[test]
+        fn color_progress_summary_all_complete() {
+            let phases = vec![phase(2, 2), phase(1, 1)];
+            let result = color_progress_summary(&phases);
+            assert!(result.contains("2/2 phases"), "got: {result}");
+            assert!(result.contains("3/3 tasks"), "got: {result}");
+        }
+
+        #[test]
+        fn color_progress_summary_partial_phases() {
+            let phases = vec![phase(1, 2), phase(0, 3)];
+            let result = color_progress_summary(&phases);
+            assert!(result.contains("0/2 phases"), "got: {result}");
+            assert!(result.contains("1/5 tasks"), "got: {result}");
+        }
+
+        #[test]
+        fn color_progress_summary_zero_done() {
+            let phases = vec![phase(0, 2), phase(0, 3)];
+            let result = color_progress_summary(&phases);
+            assert!(result.contains("0/2 phases"), "got: {result}");
         }
     }
 }

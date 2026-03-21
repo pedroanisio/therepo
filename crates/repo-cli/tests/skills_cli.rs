@@ -487,6 +487,51 @@ fn check_json_with_all_installed_emits_zero_missing() {
 }
 
 #[test]
+fn sync_removes_skill_present_in_config_but_missing_on_disk() {
+    let repo = TempRepo::new("skills-sync-removed");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    // Config declares "old-skill", but only "new-skill" is installed on disk.
+    std::fs::write(
+        repo_dir.join("skills.toml"),
+        "[[skills]]\nname = \"old-skill\"\nsource = \"owner/repo\"\nscope = \"project\"\n",
+    )
+    .unwrap();
+    let skill_dir = repo.path().join(".agents").join("skills").join("new-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "---\nname: new-skill\n---\nbody\n").unwrap();
+
+    let output = run_skills(repo.path(), &["sync"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("gone") || text.contains("removed"), "expected gone skill in: {text}");
+    assert!(text.contains("added") || text.contains("new-skill"), "expected new skill in: {text}");
+}
+
+#[test]
+fn install_json_with_no_source_reports_no_source_outcome() {
+    let repo = TempRepo::new("skills-install-json-no-src");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    // Skill declared but source is empty — can't be installed.
+    std::fs::write(
+        repo_dir.join("skills.toml"),
+        "[[skills]]\nname = \"unresolvable\"\nsource = \"\"\nscope = \"project\"\n",
+    )
+    .unwrap();
+
+    let output = run_skills(repo.path(), &["install", "--json"]);
+
+    // Exits non-zero because needs_fix is non-empty is not mandatory — let's just check the JSON.
+    let text = stdout(&output);
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let items = value["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["outcome"], "no_source");
+}
+
+#[test]
 fn deploy_with_force_overwrites_existing_skills() {
     let home = TempRepo::new("skills-deploy-force");
     // First deploy

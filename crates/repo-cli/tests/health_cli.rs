@@ -210,3 +210,83 @@ fn health_json_emits_machine_readable_report() {
     assert!(value["warnings"].is_number());
     assert!(value["errors"].is_number());
 }
+
+#[test]
+fn health_check_with_custom_tool_found_shows_ok() {
+    let repo = TempRepo::new("health-custom-tool-found");
+    // Use sh with a known-working version args so it always returns output.
+    repo.write(
+        ".repo/health.toml",
+        "[tools.probe-tool]\nrequired = false\ncommand = \"sh\"\nversion_args = [\"-c\", \"echo 1.0.0\"]\n",
+    );
+
+    let output = run_health(repo.path(), &["--json"]);
+
+    let text = stdout(&output);
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let sections = value["sections"].as_array().unwrap();
+    let tool_section = sections.iter().find(|s| s["name"] == "Tools");
+    assert!(tool_section.is_some(), "expected Tools section in: {text}");
+    let checks = tool_section.unwrap()["checks"].as_array().unwrap();
+    let probe = checks.iter().find(|c| c["name"] == "probe-tool");
+    assert!(probe.is_some(), "expected probe-tool in checks: {text}");
+}
+
+#[test]
+fn health_check_with_passing_custom_check_shows_ok() {
+    let repo = TempRepo::new("health-custom-check-pass");
+    repo.write(
+        ".repo/health.toml",
+        "[checks.always-pass]\ncommand = \"true\"\ndescription = \"Always passes\"\nseverity = \"error\"\n",
+    );
+
+    let output = run_health(repo.path(), &["--json"]);
+
+    let text = stdout(&output);
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let sections = value["sections"].as_array().unwrap();
+    let custom_section = sections.iter().find(|s| s["name"] == "Checks");
+    assert!(custom_section.is_some(), "expected 'Checks' section in: {text}");
+    let checks = custom_section.unwrap()["checks"].as_array().unwrap();
+    let check = checks.iter().find(|c| c["name"] == "always-pass");
+    assert!(check.is_some(), "expected always-pass check: {text}");
+    assert_eq!(check.unwrap()["status"], "ok");
+}
+
+#[test]
+fn health_check_with_warning_severity_custom_check_exits_zero() {
+    let repo = TempRepo::new("health-custom-check-warn");
+    repo.write(
+        ".repo/health.toml",
+        "[checks.warn-check]\ncommand = \"false\"\ndescription = \"Always fails\"\nseverity = \"warning\"\n",
+    );
+
+    let output = run_health(repo.path(), &["--json"]);
+
+    // warning severity should not make the overall check exit non-zero
+    let text = stdout(&output);
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let sections = value["sections"].as_array().unwrap();
+    let custom_section = sections.iter().find(|s| s["name"] == "Checks");
+    assert!(custom_section.is_some(), "expected Checks section: {text}");
+    let checks = custom_section.unwrap()["checks"].as_array().unwrap();
+    let check = checks.iter().find(|c| c["name"] == "warn-check");
+    assert!(check.is_some(), "expected warn-check: {text}");
+    assert_eq!(check.unwrap()["status"], "warning");
+}
+
+#[test]
+fn health_check_with_error_severity_custom_check_exits_nonzero() {
+    let repo = TempRepo::new("health-custom-check-error");
+    repo.write(
+        ".repo/health.toml",
+        "[checks.bad-check]\ncommand = \"false\"\ndescription = \"Always fails\"\nseverity = \"error\"\nhint = \"try something else\"\n",
+    );
+
+    let output = run_health(repo.path(), &["--json"]);
+
+    assert!(!output.status.success(), "expected non-zero exit for error severity");
+    let text = stdout(&output);
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert!(value["errors"].as_u64().unwrap_or(0) > 0, "expected errors > 0 in: {text}");
+}

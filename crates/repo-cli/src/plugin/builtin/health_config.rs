@@ -617,4 +617,63 @@ hint = "Fix the tests first"
         assert_eq!(cfg.tools.get("node").and_then(|t| t.min_version.as_deref()), Some("20.11.0"));
         assert_eq!(cfg.tools.get("empty").and_then(|t| t.min_version.as_deref()), None);
     }
+
+    mod tool_metadata_tests {
+        use super::*;
+
+        fn meta(name: &str) -> ToolMeta {
+            tool_metadata(name)
+        }
+
+        #[test]
+        fn known_tools_have_a_url() {
+            for name in &["git", "rustc", "cargo", "node", "npm", "pnpm", "bun",
+                          "docker", "make", "cmake", "go", "zsh", "bash",
+                          "python", "uv", "skills"] {
+                assert!(
+                    meta(name).url.is_some(),
+                    "expected url for tool: {name}"
+                );
+            }
+        }
+
+        #[test]
+        fn unknown_tool_returns_empty_meta() {
+            let m = meta("definitely-not-a-real-tool");
+            assert!(m.url.is_none());
+            assert!(m.install.is_none());
+            assert!(m.latest_cmd.is_none());
+            assert!(m.latest_args.is_none());
+        }
+
+        #[test]
+        fn rust_tools_use_rustup_for_latest() {
+            for name in &["rustc", "cargo", "clippy", "rustfmt"] {
+                let m = meta(name);
+                assert_eq!(m.latest_cmd.as_deref(), Some("rustup"), "tool: {name}");
+            }
+        }
+
+        #[test]
+        fn npm_ecosystem_tools_use_npm_view_for_latest() {
+            for name in &["node", "npm", "pnpm", "skills"] {
+                let m = meta(name);
+                assert_eq!(m.latest_cmd.as_deref(), Some("npm"), "tool: {name}");
+                let args = m.latest_args.as_ref().expect("expected latest_args");
+                assert_eq!(args[0], "view", "tool: {name}");
+            }
+        }
+
+        #[test]
+        fn tools_without_latest_check_have_no_latest_cmd() {
+            for name in &["git", "bun", "docker", "make", "cmake", "go", "zsh",
+                          "bash", "python"] {
+                let m = meta(name);
+                assert!(
+                    m.latest_cmd.is_none(),
+                    "expected no latest_cmd for tool: {name}"
+                );
+            }
+        }
+    }
 }
