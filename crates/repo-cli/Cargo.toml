@@ -1,8 +1,15 @@
 [package]
-name = "repo"
+name = "therepo"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+authors = ["therepo contributors"]
 description = "General-purpose repository maintenance CLI with plugin system"
+readme = "README.md"
+documentation = "https://docs.rs/therepo"
+license = "MIT OR Apache-2.0"
+keywords = ["repo", "cli", "docs", "tooling", "workflow"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "repo"

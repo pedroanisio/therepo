@@ -56,6 +56,9 @@ impl Default for HooksSection {
 #[derive(Debug, Deserialize)]
 // Field used in Phase 2 when the validation framework is implemented.
 pub struct CheckSection {
+    // Read in tests; consumed in Phase 2 when validation is wired up.
+    // #[expect] doesn't suppress field-level dead_code on Debug-derived types (rustc quirk).
+    #[allow(dead_code)]
     #[serde(default = "default_fail_on")]
     pub fail_on: String,
 }

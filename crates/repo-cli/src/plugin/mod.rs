@@ -32,6 +32,9 @@ pub struct PluginInfo {
     pub description: String,
     pub capabilities: Vec<Capability>,
     pub builtin: bool,
+    // Read in tests; reserved for Phase 2 external plugin dispatch.
+    // #[expect] doesn't suppress field-level dead_code on Debug-derived types (rustc quirk).
+    #[allow(dead_code)]
     pub path: Option<String>,
 }
 

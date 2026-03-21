@@ -86,6 +86,95 @@ const BUILTIN_SCHEMAS: &[DefaultAsset] = &[DefaultAsset {
     content: include_str!("../../../defaults/schemas/01KM18ZD23GC3TDVN7W0GX2000-plan-schema.ts"),
 }];
 
+// All 10 default skills — superset of BUILTIN_SKILLS. Used by `repo skills deploy`
+// to install directly into the agent skills ecosystem (.agents/skills/).
+const ALL_DEFAULT_SKILLS: &[DefaultAsset] = &[
+    DefaultAsset {
+        filename: "01KM17JDVNJ333TN3R5BGZB5QS-tsdoc-voice.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM17JDVNJ333TN3R5BGZB5QS-tsdoc-voice.md"
+        ),
+    },
+    DefaultAsset {
+        filename: "01KM188YV2CJ26QH6KNH2NWG1Z-mental-model.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM188YV2CJ26QH6KNH2NWG1Z-mental-model.md"
+        ),
+    },
+    DefaultAsset {
+        filename: "01KM18ZD23GC3TDVN7W0GX2000-adv-plan.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM18ZD23GC3TDVN7W0GX2000-adv-plan.md"
+        ),
+    },
+    DefaultAsset {
+        filename: "01KM1A13V4FY0371Y0AB7FSGX9-purpose-md.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM1A13V4FY0371Y0AB7FSGX9-purpose-md.md"
+        ),
+    },
+    DefaultAsset {
+        filename: "01KM1A156P4VEY0KT304QXA466-testing-standards.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM1A156P4VEY0KT304QXA466-testing-standards.md"
+        ),
+    },
+    DefaultAsset {
+        filename: "01KM1BKXK7ST4DT8P6YC1BTMRD-incremental-validation.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM1BKXK7ST4DT8P6YC1BTMRD-incremental-validation.md"
+        ),
+    },
+    DefaultAsset {
+        filename: "01KM1BVKWT984AB0A4WPZRWWGX-review-plan.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM1BVKWT984AB0A4WPZRWWGX-review-plan.md"
+        ),
+    },
+    DefaultAsset {
+        filename: "01KM1YWRFYBBT98WV14WXDKJM4-prompt-builder.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM1YWRFYBBT98WV14WXDKJM4-prompt-builder.md"
+        ),
+    },
+    DefaultAsset {
+        filename: "01KM1Z6WK23PJQJ5PM9E9B07BC-behavioral-layer.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM1Z6WK23PJQJ5PM9E9B07BC-behavioral-layer.md"
+        ),
+    },
+    DefaultAsset {
+        filename: "01KM23VWVQWH62NBFF0TTFWVXR-doc-hygiene.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM23VWVQWH62NBFF0TTFWVXR-doc-hygiene.md"
+        ),
+    },
+];
+
+// ── Known agent configurations ───────────────────────────────────────────────
+
+struct KnownAgent {
+    /// Human-readable display name.
+    name: &'static str,
+    /// Config directory path relative to home (used for detection and symlink
+    /// placement). E.g. `".claude"` → `~/.claude/skills/<name>`.
+    config_dir: &'static str,
+}
+
+// Agents whose config directories are checked during `repo skills deploy`.
+// Detection: agent is considered present if `~/<config_dir>` exists.
+// Symlink: `<base>/<config_dir>/skills/<name>` → `../../.agents/skills/<name>`.
+const KNOWN_AGENTS: &[KnownAgent] = &[
+    KnownAgent { name: "Claude Code",  config_dir: ".claude"          },
+    KnownAgent { name: "Codex",        config_dir: ".codex"           },
+    KnownAgent { name: "Cursor",       config_dir: ".cursor"          },
+    KnownAgent { name: "Amp",          config_dir: ".amp"             },
+    KnownAgent { name: "Warp",         config_dir: ".warp"            },
+    KnownAgent { name: "Cortex Code",  config_dir: ".cortex"          },
+    KnownAgent { name: "Cline",        config_dir: ".cline"           },
+    KnownAgent { name: "OpenCode",     config_dir: ".config/opencode" },
+];
+
 // ── Config model ────────────────────────────────────────────────────
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -152,11 +241,12 @@ pub fn run(repo_root: &Path, args: &[&str]) {
     }
 
     match subcommand {
-        Some("init") => cmd_init(repo_root),
+        Some("init")   => cmd_init(repo_root),
         Some("export") => cmd_export(repo_root),
-        Some("sync") => cmd_sync(repo_root),
+        Some("sync")   => cmd_sync(repo_root),
         Some("install") => cmd_install(repo_root),
-        Some("fix") => cmd_fix(repo_root),
+        Some("fix")    => cmd_fix(repo_root),
+        Some("deploy") => cmd_deploy(args),
         Some(other) => {
             eprintln!("Unknown skills subcommand: {other}");
             eprintln!("Run `repo skills --help` for usage.");
@@ -180,6 +270,7 @@ COMMANDS:
     sync        Merge installed skills into .repo/skills.toml (keeps existing entries)
     install     Install missing skills declared in .repo/skills.toml
     fix         Remove unfixable entries (empty source, skill not found) from .repo/skills.toml
+    deploy      Install all built-in skills into the agent skills ecosystem
 
 OPTIONS:
     -h, --help  Print this help message
@@ -191,7 +282,14 @@ overwritten. The check command verifies each declared skill has a SKILL.md
 in the project's .agents/skills/ directory.
 
 Run `repo skills fix` to automatically remove entries that cannot be installed
-(missing source field or skill not found at the declared source)."
+(missing source field or skill not found at the declared source).
+
+`repo skills deploy` writes all 10 built-in skills directly into ~/.agents/skills/
+and creates agent-specific symlinks (e.g. ~/.claude/skills/) for every detected
+agent. No external registry required — the skill content is embedded in the binary.
+
+  --global, -g   Install to ~/.agents/skills/ (default and only scope)
+  --force,  -f   Overwrite already-installed skills and existing symlinks"
     );
 }
 
@@ -872,6 +970,208 @@ fn scan_installed_skills(repo_root: &Path) -> Vec<SkillEntry> {
 
     entries.sort_by(|a, b| a.name.cmp(&b.name));
     entries
+}
+
+// ── deploy helpers ───────────────────────────────────────────────────────────
+
+/// Returns the user's home directory from `$HOME` (Unix) or `%USERPROFILE%` (Windows).
+fn get_home_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+}
+
+/// Extracts the `name:` value from a skill's YAML frontmatter.
+fn parse_skill_name(content: &str) -> Option<&str> {
+    let content = content.trim_start();
+    if !content.starts_with("---") {
+        return None;
+    }
+    let rest = &content[3..];
+    let end = rest.find("\n---")?;
+    for line in rest[..end].lines() {
+        if let Some(val) = line.strip_prefix("name:") {
+            return Some(val.trim());
+        }
+    }
+    None
+}
+
+/// Builds the relative symlink target from `<base>/<config_dir>/skills/<name>`
+/// back to `<base>/.agents/skills/<name>`.
+///
+/// Depth = number of path segments in `config_dir` + 1 (for the `skills` dir).
+/// E.g. `.claude` (depth 2) → `../../.agents/skills/<name>`
+///      `.config/opencode` (depth 3) → `../../../.agents/skills/<name>`
+fn symlink_target(config_dir: &str, skill_name: &str) -> String {
+    let depth = config_dir.split('/').count() + 1;
+    format!("{}.agents/skills/{skill_name}", "../".repeat(depth))
+}
+
+// ── deploy ───────────────────────────────────────────────────────────────────
+
+fn cmd_deploy(args: &[&str]) {
+    let global = args.iter().any(|a| *a == "--global" || *a == "-g");
+    let force  = args.iter().any(|a| *a == "--force"  || *a == "-f");
+
+    let home = match get_home_dir() {
+        Some(h) => h,
+        None => {
+            eprintln!("{} cannot determine home directory", red("!!"));
+            std::process::exit(1);
+        }
+    };
+
+    // For global scope the canonical base is ~/.agents/skills/.
+    // For project scope we would use the repo root, but deploy is always global —
+    // internal skills are user-level tools, not project-specific artefacts.
+    // (Use --global / default behaviour is always global for this command.)
+    let base = if global || true { home.clone() } else { home.clone() };
+    let canonical_base = base.join(".agents").join("skills");
+
+    // Detect which agents have their config directory present under $HOME.
+    let detected: Vec<&KnownAgent> = KNOWN_AGENTS
+        .iter()
+        .filter(|a| home.join(a.config_dir).is_dir())
+        .collect();
+
+    println!("{}", bold("Deploying built-in skills"));
+    println!();
+
+    if detected.is_empty() {
+        println!(
+            "  {} no agent config dirs found under {}",
+            yellow("!!"),
+            dim(&home.display().to_string()),
+        );
+        println!("  Skills will be written to {} only.", dim("~/.agents/skills/"));
+    } else {
+        let names: Vec<&str> = detected.iter().map(|a| a.name).collect();
+        println!("  {}  {}", dim("agents :"), names.join(", "));
+    }
+    println!(
+        "  {}  ~/.agents/skills/",
+        dim("install:"),
+    );
+    println!();
+
+    let mut installed = 0u32;
+    let mut skipped   = 0u32;
+    let mut failed    = 0u32;
+
+    let w = ALL_DEFAULT_SKILLS
+        .iter()
+        .filter_map(|a| parse_skill_name(a.content))
+        .map(str::len)
+        .max()
+        .unwrap_or(0);
+
+    for asset in ALL_DEFAULT_SKILLS {
+        let skill_name = match parse_skill_name(asset.content) {
+            Some(n) => n,
+            None => {
+                eprintln!("  {} could not parse name from {}", red("!!"), asset.filename);
+                failed += 1;
+                continue;
+            }
+        };
+
+        let skill_dir = canonical_base.join(skill_name);
+        let skill_md  = skill_dir.join("SKILL.md");
+
+        // Skip already-installed unless --force.
+        if skill_md.exists() && !force {
+            println!("  {} {:<w$}  {}", dim("--"), skill_name, dim("already installed"));
+            skipped += 1;
+            continue;
+        }
+
+        // Write canonical SKILL.md.
+        if let Err(e) = std::fs::create_dir_all(&skill_dir) {
+            eprintln!("  {} {skill_name}: mkdir failed: {e}", red("!!"));
+            failed += 1;
+            continue;
+        }
+        if let Err(e) = std::fs::write(&skill_md, asset.content) {
+            eprintln!("  {} {skill_name}: write failed: {e}", red("!!"));
+            failed += 1;
+            continue;
+        }
+
+        // Create per-agent symlinks.
+        let mut linked:  Vec<&str> = Vec::new();
+        let mut skipped_link: Vec<&str> = Vec::new();
+
+        for agent in &detected {
+            let agent_skills_dir = home.join(agent.config_dir).join("skills");
+
+            if let Err(e) = std::fs::create_dir_all(&agent_skills_dir) {
+                eprintln!(
+                    "  {} {skill_name}: mkdir {}: {e}",
+                    yellow("!!"),
+                    agent_skills_dir.display(),
+                );
+                continue;
+            }
+
+            let link_path = agent_skills_dir.join(skill_name);
+            let target    = symlink_target(agent.config_dir, skill_name);
+
+            // Remove stale link/file when --force, otherwise skip.
+            let exists = link_path.exists() || link_path.symlink_metadata().is_ok();
+            if exists {
+                if force {
+                    let _ = std::fs::remove_file(&link_path);
+                } else {
+                    skipped_link.push(agent.name);
+                    continue;
+                }
+            }
+
+            #[cfg(unix)]
+            let result = std::os::unix::fs::symlink(&target, &link_path);
+            #[cfg(not(unix))]
+            let result = std::fs::copy(&skill_md, link_path.join("SKILL.md")).map(|_| ());
+
+            match result {
+                Ok(()) => linked.push(agent.name),
+                Err(e) => eprintln!(
+                    "  {} {skill_name}: symlink for {}: {e}",
+                    yellow("!!"),
+                    agent.name,
+                ),
+            }
+        }
+
+        let link_info = if linked.is_empty() && skipped_link.is_empty() {
+            dim("(no agents)")
+        } else if linked.is_empty() {
+            dim("(links already exist)")
+        } else {
+            dim(&linked.join(", "))
+        };
+
+        println!("  {} {:<w$}  {link_info}", green("ok"), skill_name);
+        installed += 1;
+    }
+
+    println!();
+    print!(
+        "  {} installed, {} skipped",
+        green(&installed.to_string()),
+        skipped,
+    );
+    if failed > 0 {
+        print!(", {} {}", red(&failed.to_string()), red("failed"));
+    }
+    println!();
+
+    if skipped > 0 {
+        println!(
+            "  Run {} to overwrite existing installs.",
+            dim("`repo skills deploy --force`"),
+        );
+    }
 }
 
 fn parse_skill_description(path: &Path) -> Option<String> {

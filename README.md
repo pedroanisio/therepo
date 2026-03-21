@@ -85,6 +85,7 @@ This repository now keeps its project documentation split by purpose:
 - [`docs/how-to-bootstrap-repo-metadata.md`](./docs/how-to-bootstrap-repo-metadata.md): repository setup recipe
 - [`docs/cli-reference.md`](./docs/cli-reference.md): command reference
 - [`docs/architecture.md`](./docs/architecture.md): code structure and design notes
+- [`docs/releasing.md`](./docs/releasing.md): SemVer, publishing, and installer policy
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md): contributor workflow for this codebase
 - [`CHANGELOG.md`](./CHANGELOG.md): notable project changes
 

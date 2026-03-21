@@ -1,0 +1,24 @@
+[dist]
+cargo-dist-version = "0.31.0"
+ci = ["github"]
+installers = ["shell", "powershell"]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+checksum = "sha256"
+source-tarball = true
+
+[workspace]
+members = ["cargo:crates/repo-cli"]
+
+[package]
+name = "therepo"
+version = "0.1.0"
+description = "General-purpose repository maintenance CLI with plugin system"
+documentation = "https://docs.rs/therepo"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+changelog = "CHANGELOG.md"
