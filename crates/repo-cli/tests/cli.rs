@@ -53,8 +53,10 @@ fn help_prints_top_level_usage() {
 
     assert!(output.status.success());
     let help = stdout(&output);
-    assert!(help.contains("repo [COMMAND] [OPTIONS]"));
-    assert!(help.contains("plugins     List discovered plugins"));
+    assert!(help.contains("Repository maintenance CLI"));
+    assert!(help.contains("Usage:"));
+    assert!(help.contains("plugins"));
+    assert!(help.contains("Examples:"));
 }
 
 #[test]

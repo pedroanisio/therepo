@@ -2,15 +2,24 @@ use std::io::IsTerminal;
 use std::sync::OnceLock;
 
 static COLOR_ENABLED: OnceLock<bool> = OnceLock::new();
+static COLOR_OVERRIDE: OnceLock<bool> = OnceLock::new();
 
 /// Whether stdout supports color output.
 ///
 /// Result is cached after first call. Respects the `NO_COLOR` convention
 /// (<https://no-color.org/>).
 pub fn use_color() -> bool {
+    if let Some(value) = COLOR_OVERRIDE.get() {
+        return *value;
+    }
+
     *COLOR_ENABLED.get_or_init(|| {
         std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal()
     })
+}
+
+pub fn disable_color() {
+    let _ = COLOR_OVERRIDE.set(false);
 }
 
 #[must_use]

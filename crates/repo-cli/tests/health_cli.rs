@@ -78,9 +78,11 @@ fn health_help_prints_usage() {
 
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let help = stdout(&output);
-    assert!(help.contains("repo health [COMMAND] [OPTIONS]"));
-    assert!(help.contains("Create a blank .repo/health.toml template"));
-    assert!(help.contains("Snapshot current environment"));
+    assert!(help.contains("Check development environment"));
+    assert!(help.contains("Usage:"));
+    assert!(help.contains("init"));
+    assert!(help.contains("export"));
+    assert!(help.contains("Examples:"));
 }
 
 #[test]
@@ -118,10 +120,10 @@ fn health_unknown_subcommand_returns_non_zero_with_guidance() {
     let repo = TempRepo::new("health-unknown");
     let output = run_health(repo.path(), &["bogus"]);
 
-    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    assert!(!output.status.success());
     let err = stderr(&output);
-    assert!(err.contains("Unknown health subcommand: bogus"));
-    assert!(err.contains("repo health --help"));
+    assert!(err.contains("unrecognized subcommand 'bogus'"));
+    assert!(err.contains("For more information, try '--help'."));
 }
 
 #[test]

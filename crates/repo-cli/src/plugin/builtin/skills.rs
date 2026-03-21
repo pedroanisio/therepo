@@ -1724,5 +1724,147 @@ mod tests {
 
             fs::remove_dir_all(dir).ok();
         }
+
+        #[test]
+        fn returns_none_when_no_description_field() {
+            let dir = temp_dir("description-missing-field");
+            let path = dir.join("SKILL.md");
+            fs::write(&path, "---\nname: my-skill\nauthor: Alice\n---\nbody\n").unwrap();
+
+            assert_eq!(super::parse_skill_description(&path), None);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn returns_unquoted_description() {
+            let dir = temp_dir("description-unquoted");
+            let path = dir.join("SKILL.md");
+            fs::write(&path, "---\nname: my-skill\ndescription: A short description\n---\nbody\n")
+                .unwrap();
+
+            assert_eq!(
+                super::parse_skill_description(&path).as_deref(),
+                Some("A short description")
+            );
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    mod skills_config {
+        use super::*;
+
+        #[test]
+        fn load_returns_none_for_missing_file() {
+            let dir = temp_dir("config-missing");
+            assert!(SkillsConfig::load(&dir).is_none());
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn load_returns_none_for_invalid_toml() {
+            let dir = temp_dir("config-invalid");
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+            fs::write(repo_dir.join("skills.toml"), "NOT VALID TOML ][").unwrap();
+
+            assert!(SkillsConfig::load(&dir).is_none());
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn load_parses_skill_entries() {
+            let dir = temp_dir("config-valid");
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+            let content = "[[skills]]\nname = \"my-skill\"\nsource = \"owner/repo\"\nscope = \"project\"\n";
+            fs::write(repo_dir.join("skills.toml"), content).unwrap();
+
+            let cfg = SkillsConfig::load(&dir).unwrap();
+            assert_eq!(cfg.skills.len(), 1);
+            assert_eq!(cfg.skills[0].name, "my-skill");
+            assert_eq!(cfg.skills[0].source, "owner/repo");
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn to_toml_round_trips() {
+            let cfg = SkillsConfig {
+                skills: vec![SkillEntry {
+                    name: "my-skill".into(),
+                    source: "owner/repo".into(),
+                    skill: None,
+                    agents: vec![],
+                    scope: "project".into(),
+                    description: None,
+                }],
+            };
+            let toml_str = cfg.to_toml();
+            let parsed: SkillsConfig = toml::from_str(&toml_str).unwrap();
+            assert_eq!(parsed.skills.len(), 1);
+            assert_eq!(parsed.skills[0].name, "my-skill");
+            assert_eq!(parsed.skills[0].scope, "project");
+        }
+    }
+
+    mod skill_name_from_bundle {
+        use super::*;
+
+        #[test]
+        fn returns_name_from_plain_bundle() {
+            let plain = ALL_SKILL_BUNDLES
+                .iter()
+                .find(|b| matches!(b.source, SkillSource::Plain(_)));
+            let bundle = plain.expect("at least one plain bundle must exist");
+            let name = skill_name_from_bundle(bundle);
+            assert!(name.is_some(), "expected name from plain bundle frontmatter");
+        }
+
+        #[test]
+        fn returns_name_from_zip_bundle() {
+            let zip = ALL_SKILL_BUNDLES
+                .iter()
+                .find(|b| matches!(b.source, SkillSource::Zip { .. }));
+            if let Some(bundle) = zip {
+                let name = skill_name_from_bundle(bundle);
+                assert!(name.is_some(), "expected name from ZIP bundle SKILL.md");
+            }
+            // If no ZIP bundles exist the test is vacuously satisfied.
+        }
+    }
+
+    mod get_home_dir {
+        use super::*;
+
+        #[test]
+        fn returns_some_in_test_environment() {
+            assert!(
+                get_home_dir().is_some(),
+                "HOME or USERPROFILE must be set in the test environment"
+            );
+        }
+    }
+
+    mod build_install_cmd_extra {
+        use super::*;
+
+        #[test]
+        fn source_only_produces_minimal_command() {
+            let entry = SkillEntry {
+                name: "my-skill".into(),
+                source: "owner/repo".into(),
+                skill: None,
+                agents: vec![],
+                scope: "project".into(),
+                description: None,
+            };
+            assert_eq!(
+                build_install_cmd(&entry).as_deref(),
+                Some("npx skills add owner/repo -y")
+            );
+        }
     }
 }

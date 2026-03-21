@@ -55,8 +55,10 @@ fn prompt_help_prints_usage() {
 
     assert!(output.status.success());
     let help = stdout(&output);
-    assert!(help.contains("repo prompt [COMMAND] [OPTIONS]"));
-    assert!(help.contains("init        Write built-in defaults"));
+    assert!(help.contains("Reusable prompt snippets"));
+    assert!(help.contains("Usage:"));
+    assert!(help.contains("init"));
+    assert!(help.contains("Examples:"));
 
     cleanup(repo_root);
 }
@@ -144,7 +146,8 @@ fn ulid_help_prints_usage() {
     assert!(output.status.success());
     let help = stdout(&output);
     assert!(help.contains("repo ulid"));
-    assert!(help.contains("repo ulid -n <N>"));
+    assert!(help.contains("Usage:"));
+    assert!(help.contains("Examples:"));
 
     cleanup(repo_root);
 }

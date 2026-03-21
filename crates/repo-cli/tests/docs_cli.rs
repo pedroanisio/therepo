@@ -86,8 +86,10 @@ fn help_prints_docs_usage() {
 
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let help = stdout(&output);
-    assert!(help.contains("repo docs [COMMAND] [OPTIONS]"));
-    assert!(help.contains("references  List documents in _docs/references/"));
+    assert!(help.contains("Browse plans, ADRs, and references"));
+    assert!(help.contains("Usage:"));
+    assert!(help.contains("references"));
+    assert!(help.contains("Examples:"));
 }
 
 #[test]

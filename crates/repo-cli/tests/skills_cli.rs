@@ -28,7 +28,6 @@ impl TempRepo {
     fn path(&self) -> &Path {
         &self.path
     }
-
 }
 
 impl Drop for TempRepo {
@@ -46,6 +45,15 @@ fn run_skills(repo_root: &Path, args: &[&str]) -> Output {
         .unwrap()
 }
 
+fn run_skills_env(repo_root: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
+    let mut cmd = Command::new(repo_bin());
+    cmd.args(["skills"]).args(args).current_dir(repo_root);
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
+    cmd.output().unwrap()
+}
+
 fn stdout(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
@@ -61,8 +69,10 @@ fn help_prints_skills_usage() {
 
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let help = stdout(&output);
-    assert!(help.contains("repo skills [COMMAND]"));
-    assert!(help.contains("deploy      Install all built-in skills"));
+    assert!(help.contains("Manage required agent skills"));
+    assert!(help.contains("Usage:"));
+    assert!(help.contains("deploy"));
+    assert!(help.contains("Examples:"));
 }
 
 #[test]
@@ -135,4 +145,214 @@ fn fix_without_manifest_returns_non_zero() {
     let text = stderr(&output);
     assert!(text.contains("No .repo/skills.toml found"));
     assert!(text.contains("repo skills init"));
+}
+
+#[test]
+fn init_is_idempotent() {
+    let repo = TempRepo::new("skills-init-idempotent");
+
+    let out1 = run_skills(repo.path(), &["init"]);
+    assert!(out1.status.success(), "first init failed: {}", stderr(&out1));
+
+    let out2 = run_skills(repo.path(), &["init"]);
+    assert!(out2.status.success(), "second init failed: {}", stderr(&out2));
+
+    let text = stdout(&out2);
+    assert!(
+        text.contains("already exists"),
+        "expected 'already exists' in second init output: {text}"
+    );
+}
+
+#[test]
+fn check_with_declared_skill_not_installed_returns_non_zero() {
+    let repo = TempRepo::new("skills-check-not-installed");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    std::fs::write(
+        repo_dir.join("skills.toml"),
+        "[[skills]]\nname = \"my-skill\"\nsource = \"owner/repo\"\nscope = \"project\"\n",
+    )
+    .unwrap();
+
+    let output = run_skills(repo.path(), &[]);
+
+    assert!(!output.status.success());
+    let text = stdout(&output);
+    assert!(text.contains("my-skill"), "expected skill name in output: {text}");
+    assert!(text.contains("not installed"), "expected 'not installed' in output: {text}");
+}
+
+#[test]
+fn check_with_all_declared_skills_installed_succeeds() {
+    let repo = TempRepo::new("skills-check-all-ok");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    std::fs::write(
+        repo_dir.join("skills.toml"),
+        "[[skills]]\nname = \"my-skill\"\nsource = \"owner/repo\"\nscope = \"project\"\n",
+    )
+    .unwrap();
+    let skill_dir = repo.path().join(".agents").join("skills").join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "---\nname: my-skill\n---\nbody\n").unwrap();
+
+    let output = run_skills(repo.path(), &[]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("my-skill"), "expected skill name in output: {text}");
+    assert!(text.contains("0 missing"), "expected '0 missing' in output: {text}");
+}
+
+#[test]
+fn check_with_empty_manifest_reports_nothing_declared() {
+    let repo = TempRepo::new("skills-check-empty-manifest");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    std::fs::write(repo_dir.join("skills.toml"), "").unwrap();
+
+    let output = run_skills(repo.path(), &[]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("No skills declared"), "expected 'No skills declared' in: {text}");
+}
+
+#[test]
+fn export_with_installed_skills_writes_config() {
+    let repo = TempRepo::new("skills-export-with-skills");
+    let skill_dir = repo.path().join(".agents").join("skills").join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: my-skill\ndescription: A test skill\n---\nbody\n",
+    )
+    .unwrap();
+
+    let output = run_skills(repo.path(), &["export"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    assert!(
+        repo.path().join(".repo").join("skills.toml").is_file(),
+        "skills.toml was not created"
+    );
+    let text = stdout(&output);
+    assert!(text.contains("my-skill"), "expected skill name in output: {text}");
+}
+
+#[test]
+fn sync_without_manifest_creates_config_from_installed() {
+    let repo = TempRepo::new("skills-sync-no-manifest");
+    let skill_dir = repo.path().join(".agents").join("skills").join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "---\nname: my-skill\n---\nbody\n").unwrap();
+
+    let output = run_skills(repo.path(), &["sync"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    assert!(
+        repo.path().join(".repo").join("skills.toml").is_file(),
+        "skills.toml was not created"
+    );
+    let text = stdout(&output);
+    assert!(text.contains("my-skill"), "expected skill name in output: {text}");
+    assert!(text.contains("added"), "expected 'added' in sync output: {text}");
+}
+
+#[test]
+fn sync_with_existing_manifest_preserves_source() {
+    let repo = TempRepo::new("skills-sync-existing");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    std::fs::write(
+        repo_dir.join("skills.toml"),
+        "[[skills]]\nname = \"my-skill\"\nsource = \"owner/repo\"\nscope = \"project\"\n",
+    )
+    .unwrap();
+    let skill_dir = repo.path().join(".agents").join("skills").join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "---\nname: my-skill\n---\nbody\n").unwrap();
+
+    let output = run_skills(repo.path(), &["sync"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let config_content = std::fs::read_to_string(repo_dir.join("skills.toml")).unwrap();
+    assert!(
+        config_content.contains("owner/repo"),
+        "source field should be preserved after sync: {config_content}"
+    );
+    let text = stdout(&output);
+    assert!(text.contains("kept"), "expected 'kept' in sync output: {text}");
+}
+
+#[test]
+fn install_when_all_skills_present_reports_ok() {
+    let repo = TempRepo::new("skills-install-all-present");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    std::fs::write(
+        repo_dir.join("skills.toml"),
+        "[[skills]]\nname = \"my-skill\"\nsource = \"owner/repo\"\nscope = \"project\"\n",
+    )
+    .unwrap();
+    let skill_dir = repo.path().join(".agents").join("skills").join("my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(skill_dir.join("SKILL.md"), "---\nname: my-skill\n---\nbody\n").unwrap();
+
+    let output = run_skills(repo.path(), &["install"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(
+        text.contains("all skills are installed"),
+        "expected 'all skills are installed' in: {text}"
+    );
+}
+
+#[test]
+fn fix_with_empty_skills_list_reports_nothing_to_fix() {
+    let repo = TempRepo::new("skills-fix-empty-list");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    std::fs::write(repo_dir.join("skills.toml"), "").unwrap();
+
+    let output = run_skills(repo.path(), &["fix"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("nothing to fix"), "expected 'nothing to fix' in: {text}");
+}
+
+#[test]
+fn unknown_subcommand_prints_error_to_stderr() {
+    let repo = TempRepo::new("skills-unknown-cmd");
+    let output = run_skills(repo.path(), &["bogus-subcommand"]);
+
+    let text = stderr(&output);
+    assert!(
+        text.contains("Unknown skills subcommand") || text.contains("bogus-subcommand"),
+        "expected unknown subcommand error in stderr: {text}"
+    );
+}
+
+#[test]
+fn deploy_installs_builtin_skills_to_custom_home() {
+    let home = TempRepo::new("skills-deploy-home");
+    let output = run_skills_env(
+        home.path(),
+        &["deploy"],
+        &[("HOME", home.path().to_str().unwrap())],
+    );
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(
+        text.contains("Deploying built-in skills"),
+        "expected deploy banner in: {text}"
+    );
+    assert!(
+        home.path().join(".agents").join("skills").is_dir(),
+        "expected ~/.agents/skills/ to be created"
+    );
 }
