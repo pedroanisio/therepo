@@ -57,6 +57,7 @@ pub enum DocKind {
 }
 
 impl DocKind {
+    #[must_use]
     pub fn subdir(self) -> &'static str {
         match self {
             Self::Plans => "plans",
@@ -66,6 +67,7 @@ impl DocKind {
         }
     }
 
+    #[must_use]
     pub fn label(self) -> &'static str {
         match self {
             Self::Plans => "plan",
@@ -75,7 +77,8 @@ impl DocKind {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "plans" => Some(Self::Plans),
             "designs" => Some(Self::Designs),
@@ -99,7 +102,7 @@ pub fn run(repo_root: &Path, args: &[&str]) {
     let subcommand = args.first().copied();
 
     if args.iter().any(|a| *a == "--help" || *a == "-h") {
-        if let Some(kind) = subcommand.and_then(DocKind::from_str) {
+        if let Some(kind) = subcommand.and_then(DocKind::parse) {
             print_subcommand_help(kind);
         } else {
             print_help();
@@ -109,7 +112,7 @@ pub fn run(repo_root: &Path, args: &[&str]) {
 
     match subcommand {
         Some(sub) => {
-            if let Some(kind) = DocKind::from_str(sub) {
+            if let Some(kind) = DocKind::parse(sub) {
                 let remaining: Vec<&str> = args[1..].to_vec();
                 list_kind(repo_root, kind, &remaining);
             } else {
@@ -230,7 +233,7 @@ fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) {
     }
 
     // Validate --status flag.
-    let has_status_flag = args.iter().any(|a| *a == "--status");
+    let has_status_flag = args.contains(&"--status");
     let status_filter = args
         .windows(2)
         .find(|w| w[0] == "--status")
@@ -241,7 +244,7 @@ fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) {
         std::process::exit(1);
     }
 
-    let json_output = args.iter().any(|a| *a == "--json");
+    let json_output = args.contains(&"--json");
 
     let filtered: Vec<&Doc> = docs
         .iter()
@@ -274,26 +277,27 @@ fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) {
 // ── Resolve docs per kind ──────────────────────────────────────────
 
 fn resolve_docs(repo_root: &Path, kind: DocKind) -> Result<Vec<Doc>, String> {
-    match kind {
-        DocKind::Plans => {
-            let storage = repo_root.join(".repo").join("storage");
-            if !storage.is_dir() {
-                return Ok(Vec::new());
-            }
-            scan_storage_plans(&storage)
+    if let DocKind::Plans = kind {
+        let storage = repo_root.join(".repo").join("storage");
+        if !storage.is_dir() {
+            return Ok(Vec::new());
         }
-        _ => {
-            let dir = repo_root.join("_docs").join(kind.subdir());
-            if !dir.is_dir() {
-                return Ok(Vec::new());
-            }
-            scan_docs(&dir)
+        Ok(scan_storage_plans(&storage))
+    } else {
+        let dir = repo_root.join("_docs").join(kind.subdir());
+        if !dir.is_dir() {
+            return Ok(Vec::new());
         }
+        scan_docs(&dir)
     }
 }
 
 // ── Scanning _docs/ (designs, adrs, references) ────────────────────
 
+/// # Errors
+///
+/// Returns an error when the target directory cannot be read or an entry
+/// cannot be loaded from disk.
 pub fn scan_docs(dir: &Path) -> Result<Vec<Doc>, String> {
     let entries = fs::read_dir(dir).map_err(|e| format!("cannot read {}: {e}", dir.display()))?;
 
@@ -340,11 +344,11 @@ pub fn scan_docs(dir: &Path) -> Result<Vec<Doc>, String> {
 
 // ── Scanning .repo/storage/ (plans) ────────────────────────────────
 
-fn scan_storage_plans(storage_dir: &Path) -> Result<Vec<Doc>, String> {
+fn scan_storage_plans(storage_dir: &Path) -> Vec<Doc> {
     let mut docs = Vec::new();
     walk_storage_dir(storage_dir, &mut docs);
     docs.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.title.cmp(&b.title)));
-    Ok(docs)
+    docs
 }
 
 fn walk_storage_dir(dir: &Path, docs: &mut Vec<Doc>) {
@@ -436,13 +440,7 @@ fn parse_plan_json(content: &str, path: &Path) -> Option<Doc> {
         .and_then(|p| p.get("successOutcome"))
         .and_then(|v| v.as_str())
         .map(|s| truncate_title(s, 72))
-        .or_else(|| {
-            if !plan_id.is_empty() {
-                Some(plan_id.replace('-', " "))
-            } else {
-                None
-            }
-        })
+        .or_else(|| (!plan_id.is_empty()).then(|| plan_id.replace('-', " ")))
         .or_else(|| {
             problem
                 .and_then(|p| p.get("problemStatement"))
@@ -461,15 +459,14 @@ fn parse_plan_json(content: &str, path: &Path) -> Option<Doc> {
         .get("updatedAt")
         .or_else(|| metadata.get("createdAt"))
         .and_then(|v| v.as_str())
-        .map(|d| {
+        .map_or_else(|| "\u{2014}".into(), |d| {
             // Extract just the date part from ISO 8601.
             if d.len() >= 10 {
                 d[..10].to_string()
             } else {
                 d.to_string()
             }
-        })
-        .unwrap_or_else(|| "\u{2014}".into());
+        });
 
     // Extract steps as pseudo-phases grouped by execution order.
     let phases = extract_json_phases(obj);
@@ -520,9 +517,8 @@ fn derive_plan_status(
 }
 
 fn extract_json_phases(obj: &serde_json::Map<String, serde_json::Value>) -> Vec<PlanPhase> {
-    let steps = match obj.get("steps").and_then(|v| v.as_array()) {
-        Some(s) => s,
-        None => return Vec::new(),
+    let Some(steps) = obj.get("steps").and_then(|v| v.as_array()) else {
+        return Vec::new();
     };
 
     if steps.is_empty() {
@@ -608,7 +604,7 @@ fn extract_json_phases(obj: &serde_json::Map<String, serde_json::Value>) -> Vec<
             None => format!("[{size}] {title}"),
         };
 
-        let (done, total) = step.copied().map(step_progress).unwrap_or((0, 1));
+        let (done, total) = step.copied().map_or((0, 1), step_progress);
 
         phases.push(PlanPhase { name, done, total });
     }
@@ -678,17 +674,23 @@ fn step_progress(step: &serde_json::Value) -> (usize, usize) {
     };
 
     if let (Some(total), Some(done)) = (
-        budget.get("valReq").and_then(|v| v.as_u64()),
-        budget.get("valDone").and_then(|v| v.as_u64()),
+        budget.get("valReq").and_then(serde_json::Value::as_u64),
+        budget.get("valDone").and_then(serde_json::Value::as_u64),
     ) {
-        return (done as usize, total as usize);
+        return (
+            usize::try_from(done).unwrap_or(usize::MAX),
+            usize::try_from(total).unwrap_or(usize::MAX),
+        );
     }
 
     if let (Some(total), Some(done)) = (
-        budget.get("required").and_then(|v| v.as_u64()),
-        budget.get("performed").and_then(|v| v.as_u64()),
+        budget.get("required").and_then(serde_json::Value::as_u64),
+        budget.get("performed").and_then(serde_json::Value::as_u64),
     ) {
-        return (done as usize, total as usize);
+        return (
+            usize::try_from(done).unwrap_or(usize::MAX),
+            usize::try_from(total).unwrap_or(usize::MAX),
+        );
     }
 
     (0, 1)
@@ -775,7 +777,7 @@ fn parse_yaml_fields(text: &str) -> HashMap<String, String> {
                 .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
                 .unwrap_or(value);
 
-            map.insert(key.to_string(), value.to_string());
+            map.insert(key.clone(), value.to_string());
         }
     }
 
@@ -823,6 +825,7 @@ fn parse_plan_phases(content: &str) -> Vec<PlanPhase> {
 
 // ── Table rendering ─────────────────────────────────────────────────
 
+#[expect(clippy::too_many_lines)]
 fn print_table(kind: DocKind, docs: &[&Doc]) {
     let has_phases = matches!(kind, DocKind::Plans) && docs.iter().any(|d| !d.phases.is_empty());
 
@@ -1043,5 +1046,229 @@ fn progress_bar(done: usize, total: usize, width: usize) -> String {
         yellow(&bar_str)
     } else {
         cyan(&bar_str)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_dir(label: &str) -> std::path::PathBuf {
+        let unique = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("therepo-docs-{label}-{nanos}-{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_file(root: &std::path::Path, relative: &str, content: &str) {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, content).unwrap();
+    }
+
+    mod doc_kind {
+        use super::*;
+
+        #[test]
+        fn parse_accepts_known_names_and_aliases() {
+            assert!(matches!(DocKind::parse("plans"), Some(DocKind::Plans)));
+            assert!(matches!(DocKind::parse("designs"), Some(DocKind::Designs)));
+            assert!(matches!(DocKind::parse("adrs"), Some(DocKind::Adrs)));
+            assert!(matches!(DocKind::parse("refs"), Some(DocKind::References)));
+            assert!(matches!(
+                DocKind::parse("references"),
+                Some(DocKind::References)
+            ));
+            assert!(DocKind::parse("unknown").is_none());
+        }
+    }
+
+    mod parsing {
+        use super::*;
+
+        #[test]
+        fn parse_frontmatter_extracts_fields_and_defaults() {
+            let path = std::path::Path::new("2026-03-21-example.md");
+            let doc = parse_frontmatter(
+                "---\n\
+                 title: \"Example Plan\"\n\
+                 version: '1.2.3'\n\
+                 status: accepted\n\
+                 date: 2026-03-21\n\
+                 ---\n\
+                 body\n",
+                path,
+            )
+            .expect("expected frontmatter");
+
+            assert_eq!(doc.file, "2026-03-21-example.md");
+            assert_eq!(doc.title, "Example Plan");
+            assert_eq!(doc.version, "1.2.3");
+            assert_eq!(doc.status, "accepted");
+            assert_eq!(doc.date, "2026-03-21");
+            assert!(doc.phases.is_empty());
+        }
+
+        #[test]
+        fn parse_frontmatter_rejects_missing_title() {
+            let path = std::path::Path::new("missing-title.md");
+            assert!(parse_frontmatter("---\nstatus: draft\n---\nbody\n", path).is_none());
+        }
+
+        #[test]
+        fn parse_plan_phases_groups_headings_and_counts_tasks() {
+            let phases = parse_plan_phases(
+                "\
+                 # Intro\n\
+                 ## Phase 1 - Setup\n\
+                 - [x] one\n\
+                 - [ ] two\n\
+                 ## Phase 2 - Finish\n\
+                 - [x] done\n",
+            );
+
+            assert_eq!(phases.len(), 2);
+            assert_eq!(phases[0].name, "Phase 1 - Setup");
+            assert_eq!(phases[0].done, 1);
+            assert_eq!(phases[0].total, 2);
+            assert_eq!(phases[1].name, "Phase 2 - Finish");
+            assert_eq!(phases[1].done, 1);
+            assert_eq!(phases[1].total, 1);
+        }
+
+        #[test]
+        fn truncate_title_prefers_sentence_boundaries_and_word_wrap() {
+            assert_eq!(
+                truncate_title("Short title", 72),
+                "Short title".to_string()
+            );
+            assert_eq!(
+                truncate_title(
+                    "A concise outcome: keep the first clause when truncating the title",
+                    40
+                ),
+                "A concise outcome".to_string()
+            );
+        }
+    }
+
+    mod json {
+        use super::*;
+
+        #[test]
+        fn parse_plan_json_uses_progress_and_status_from_steps() {
+            let path = std::path::Path::new("plan.json");
+            let doc = parse_plan_json(
+                r#"{
+                    "schemaVersion": "1",
+                    "metadata": {
+                        "planId": "release-checklist",
+                        "version": "2.0.0",
+                        "updatedAt": "2026-03-21T12:34:56Z"
+                    },
+                    "problem": {
+                        "successOutcome": "Ship a tighter release flow without breaking installs"
+                    },
+                    "steps": [
+                        {
+                            "id": "setup",
+                            "title": "Setup",
+                            "size": "S",
+                            "validationBudget": { "valReq": 2, "valDone": 2 }
+                        },
+                        {
+                            "id": "ship",
+                            "title": "Ship",
+                            "size": "M",
+                            "validationBudget": { "required": 3, "performed": 1 }
+                        }
+                    ],
+                    "executionOrder": {
+                        "sequence": ["setup", "ship"],
+                        "parallelizableGroups": [["setup", "ship"]]
+                    }
+                }"#,
+                path,
+            )
+            .expect("expected json doc");
+
+            assert_eq!(doc.file, "plan.json");
+            assert_eq!(
+                doc.title,
+                "Ship a tighter release flow without breaking installs"
+            );
+            assert_eq!(doc.version, "2.0.0");
+            assert_eq!(doc.status, "active");
+            assert_eq!(doc.date, "2026-03-21");
+            assert_eq!(doc.phases.len(), 2);
+            assert!(doc.phases[0].name.starts_with("┌ [S] Setup"));
+            assert!(doc.phases[1].name.starts_with("└ [M] Ship"));
+            assert_eq!(doc.phases[0].done, 2);
+            assert_eq!(doc.phases[0].total, 2);
+        }
+
+        #[test]
+        fn derive_plan_status_prefers_phase_completion_over_history() {
+            let mut obj = serde_json::Map::new();
+            obj.insert("metadata".into(), serde_json::json!({"versionHistory": [1]}));
+            let phases = vec![PlanPhase {
+                name: "setup".into(),
+                done: 1,
+                total: 1,
+            }];
+
+            assert_eq!(derive_plan_status(&obj, &phases), "complete");
+        }
+    }
+
+    mod scanning {
+        use super::*;
+
+        #[test]
+        fn scan_docs_sorts_markdown_docs_by_date_then_title() {
+            let dir = temp_dir("scan-docs");
+            write_file(
+                &dir,
+                "b.md",
+                "---\n\
+                 title: Beta\n\
+                 version: 1.0.0\n\
+                 status: draft\n\
+                 date: 2026-03-20\n\
+                 ---\n",
+            );
+            write_file(
+                &dir,
+                "a.md",
+                "---\n\
+                 title: Alpha\n\
+                 version: 1.0.0\n\
+                 status: accepted\n\
+                 date: 2026-03-21\n\
+                 ---\n",
+            );
+            write_file(&dir, "ignore.txt", "ignored");
+
+            let docs = scan_docs(&dir).expect("expected docs");
+
+            assert_eq!(docs.len(), 2);
+            assert_eq!(docs[0].file, "a.md");
+            assert_eq!(docs[0].title, "Alpha");
+            assert_eq!(docs[1].file, "b.md");
+            assert_eq!(docs[1].title, "Beta");
+
+            fs::remove_dir_all(dir).ok();
+        }
     }
 }

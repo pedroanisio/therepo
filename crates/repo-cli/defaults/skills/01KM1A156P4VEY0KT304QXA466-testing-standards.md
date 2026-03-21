@@ -1,7 +1,10 @@
 ---
 name: testing-standards
+version: "1.0.0"
 description: Enforce comprehensive testing standards including coverage targets, test organization (unit/integration/E2E), TDD workflow, property-based testing, and test quality requirements (deterministic, isolated, realistic). Use when writing tests, reviewing test quality, setting up test infrastructure, or enforcing coverage thresholds in CI.
-ULID: 01KM1A156P4VEY0KT304QXA466
+allowed-tools: Bash Read Glob Grep
+metadata:
+  ulid: 01KM1A156P4VEY0KT304QXA466
 ---
 
 # Testing Standards

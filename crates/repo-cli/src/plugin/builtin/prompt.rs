@@ -73,9 +73,8 @@ pub fn run(repo_root: &Path, args: &[&str]) {
 
     match subcommand {
         Some("init") => cmd_init(&prompts_dir),
-        Some("list") => cmd_list(&prompts_dir, args),
+        Some("list") | None => cmd_list(&prompts_dir, args),
         Some(name) => cmd_show(&prompts_dir, name),
-        None => cmd_list(&prompts_dir, args),
     }
 }
 
@@ -199,30 +198,27 @@ fn cmd_show(prompts_dir: &Path, name: &str) {
         .find(|p| p.name == name)
         .or_else(|| prompts.iter().find(|p| p.name.starts_with(name)));
 
-    match found {
-        Some(prompt) => {
-            println!("{}", prompt.body);
-        }
-        None => {
-            eprintln!("Unknown prompt: {name}");
-            eprintln!();
+    if let Some(prompt) = found {
+        println!("{}", prompt.body);
+    } else {
+        eprintln!("Unknown prompt: {name}");
+        eprintln!();
 
-            let suggestions: Vec<&str> = prompts
-                .iter()
-                .filter(|p| p.name.contains(name) || p.tags.iter().any(|t| t.contains(name)))
-                .map(|p| p.name.as_str())
-                .collect();
+        let suggestions: Vec<&str> = prompts
+            .iter()
+            .filter(|p| p.name.contains(name) || p.tags.iter().any(|t| t.contains(name)))
+            .map(|p| p.name.as_str())
+            .collect();
 
-            if !suggestions.is_empty() {
-                eprintln!("Did you mean:");
-                for s in &suggestions {
-                    eprintln!("  {s}");
-                }
-            } else {
-                eprintln!("Run `repo prompt list` to see available prompts.");
+        if suggestions.is_empty() {
+            eprintln!("Run `repo prompt list` to see available prompts.");
+        } else {
+            eprintln!("Did you mean:");
+            for s in &suggestions {
+                eprintln!("  {s}");
             }
-            std::process::exit(1);
         }
+        std::process::exit(1);
     }
 }
 
@@ -346,7 +342,7 @@ fn parse_yaml_fields(text: &str) -> HashMap<String, String> {
                 .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
                 .unwrap_or(value);
 
-            map.insert(key.to_string(), value.to_string());
+            map.insert(key.clone(), value.to_string());
         }
     }
 

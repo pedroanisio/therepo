@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+set -eu
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+CRATE_MANIFEST="$REPO_ROOT/crates/repo-cli/Cargo.toml"
+
+echo "pre-commit: running clippy gate"
+cargo clippy \
+  --manifest-path "$CRATE_MANIFEST" \
+  --all-targets \
+  --all-features \
+  -- \
+  -D warnings
+
+echo "pre-commit: running test gate"
+cargo test \
+  --manifest-path "$CRATE_MANIFEST" \
+  --all-features

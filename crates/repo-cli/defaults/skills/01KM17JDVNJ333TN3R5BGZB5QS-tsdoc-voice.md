@@ -1,5 +1,6 @@
 ---
 name: tsdoc-voice
+version: "1.0.0"
 description: >
   Enforce the project's TSDoc Voice Guide when writing, reviewing, or refactoring
   TypeScript documentation comments. Use this skill whenever you are writing TSDoc
@@ -8,7 +9,9 @@ description: >
   documentation style, doc comments, or code documentation standards. Also trigger
   when writing file headers, section dividers, `@example`, `@deprecated`,
   `@defaultValue`, or `ai()` metadata alongside TSDoc.
-ULID: 01KM17JDVNJ333TN3R5BGZB5QS
+allowed-tools: Read Glob Grep Edit
+metadata:
+  ulid: 01KM17JDVNJ333TN3R5BGZB5QS
 ---
 
 # TSDoc Voice Guide — Skill

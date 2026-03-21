@@ -13,6 +13,7 @@ pub fn use_color() -> bool {
     })
 }
 
+#[must_use]
 pub fn bold(s: &str) -> String {
     if use_color() {
         format!("\x1b[1m{s}\x1b[0m")
@@ -21,6 +22,7 @@ pub fn bold(s: &str) -> String {
     }
 }
 
+#[must_use]
 pub fn dim(s: &str) -> String {
     if use_color() {
         format!("\x1b[2m{s}\x1b[0m")
@@ -29,6 +31,7 @@ pub fn dim(s: &str) -> String {
     }
 }
 
+#[must_use]
 pub fn green(s: &str) -> String {
     if use_color() {
         format!("\x1b[32m{s}\x1b[0m")
@@ -37,6 +40,7 @@ pub fn green(s: &str) -> String {
     }
 }
 
+#[must_use]
 pub fn yellow(s: &str) -> String {
     if use_color() {
         format!("\x1b[33m{s}\x1b[0m")
@@ -45,6 +49,7 @@ pub fn yellow(s: &str) -> String {
     }
 }
 
+#[must_use]
 pub fn red(s: &str) -> String {
     if use_color() {
         format!("\x1b[31m{s}\x1b[0m")
@@ -53,6 +58,7 @@ pub fn red(s: &str) -> String {
     }
 }
 
+#[must_use]
 pub fn cyan(s: &str) -> String {
     if use_color() {
         format!("\x1b[36m{s}\x1b[0m")
@@ -61,6 +67,7 @@ pub fn cyan(s: &str) -> String {
     }
 }
 
+#[must_use]
 pub fn status_color(s: &str) -> String {
     if !use_color() {
         return s.to_string();

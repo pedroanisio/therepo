@@ -81,6 +81,15 @@ repo prompt init
 repo skills init
 ```
 
+### Deploy built-in skills to your AI agents
+
+```bash
+repo skills deploy
+```
+
+Installs all 10 built-in skills into `~/.agents/skills/` and symlinks them for
+every detected agent (Claude Code, Codex, etc.).
+
 ## What Gets Created
 
 Some commands create or inspect metadata under your repository's `.repo/` directory:

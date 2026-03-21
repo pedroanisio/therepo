@@ -32,6 +32,28 @@ cargo run --manifest-path crates/repo-cli/Cargo.toml -- health
 cargo run --manifest-path crates/repo-cli/Cargo.toml -- skills
 ```
 
+### Enable pre-commit hooks
+
+```bash
+./scripts/setup-git-hooks.sh
+```
+
+This configures Git to use the repository-managed hooks in `.githooks/`.
+
+The repository currently enforces:
+
+- `pre-commit` for Clippy and test failures
+- `pre-push` for the coverage threshold
+
+### Check coverage
+
+```bash
+cargo llvm-cov --version || cargo install cargo-llvm-cov --locked
+./scripts/check-coverage.sh
+```
+
+The current repository policy is line coverage above 90%, enforced as a minimum of 91%.
+
 ## Contribution Expectations
 
 ### Code
@@ -63,7 +85,20 @@ When changing them:
 2. Update the implementation.
 3. Build the crate with `cargo build` or `cargo check`.
 4. Run the relevant command help and at least one realistic command path.
-5. Update documentation and examples in the same change.
+5. Ensure the pre-commit gates pass:
+
+```bash
+cargo clippy --manifest-path crates/repo-cli/Cargo.toml --all-targets --all-features -- -D warnings
+cargo test --manifest-path crates/repo-cli/Cargo.toml --all-features
+```
+
+6. Ensure the coverage threshold passes:
+
+```bash
+./scripts/check-coverage.sh
+```
+
+7. Update documentation and examples in the same change.
 
 ## Areas That Need Extra Care
 
@@ -75,11 +110,15 @@ These files currently combine CLI parsing, filesystem access, rendering, and bus
 
 ## Testing Status
 
-This repository currently has no automated test suite. Until tests exist:
+This repository has crate-level automated tests and an enforced coverage threshold.
 
-- verify changes by building the crate
+Manual command-path validation is still expected for CLI changes because passing unit tests do not fully cover user-facing command behavior.
+
+When a change affects CLI output, filesystem interactions, or embedded defaults:
+
 - run the affected command paths manually
 - prefer incremental changes with clear behavior boundaries
+- add or extend automated tests where practical
 
 ## Pull Request Checklist
 

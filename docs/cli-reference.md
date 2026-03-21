@@ -79,12 +79,14 @@ repo skills [COMMAND]
 - `sync`
 - `install`
 - `fix`
+- `deploy`
 
 ### Notes
 
 - declarations live in `.repo/skills.toml`
-- built-in assets are copied into `.repo/skills/`, `.repo/references/`, and `.repo/schemas/`
-- installation delegates to `npx skills add`
+- built-in assets are copied into `.repo/skills/`, `.repo/references/`, and `.repo/schemas/` by `init`
+- `install` delegates to `npx skills add` for skills declared in `.repo/skills.toml`
+- `deploy` installs all 10 built-in skills directly into `~/.agents/skills/` (no external registry needed) and creates agent-specific symlinks for every detected agent (Claude Code, Codex, …); use `--force` to overwrite existing installs
 
 ## `repo prompt`
 

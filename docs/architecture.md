@@ -108,7 +108,7 @@ The implementation is usable, but there are clear structural limits:
 - command parsing and command logic are tightly coupled
 - large built-in modules mix parsing, filesystem I/O, rendering, and policy
 - plugin discovery exists, but external plugin execution is incomplete
-- test coverage is currently absent
+- automated tests and a coverage threshold now exist, but command-path coverage is still shallow
 
 ## Recommended Refactoring Direction
 

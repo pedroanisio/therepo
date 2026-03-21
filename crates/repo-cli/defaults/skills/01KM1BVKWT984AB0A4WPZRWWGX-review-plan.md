@@ -1,15 +1,17 @@
 ---
 name: review-plan
+version: "1.0.0"
 description: "Inspect, approve, or improve a PlanSchema JSON plan. Use whenever the user asks to review a plan, validate a plan, check a plan for issues, approve a plan, or improve/fix a plan. Also use when the user says 'review this plan', 'is this plan ready', 'check my plan', or references plan quality."
 license: CC0-1.0
+allowed-tools: Read Glob Grep Edit Write
+effort: high
 metadata:
-  version: "1.0.0"
+  ulid: 01KM1BVKWT984AB0A4WPZRWWGX
   domain: planning
   triggers: review plan, inspect plan, approve plan, improve plan, validate plan, check plan, plan review, plan quality, plan ready
   role: plan-reviewer
   scope: plan-validation
   output-format: markdown
-ULID: 01KM1BVKWT984AB0A4WPZRWWGX
 ---
 
 # Review Plan

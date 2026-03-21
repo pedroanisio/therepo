@@ -43,11 +43,11 @@ fn default_error() -> String {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EnvironmentConfig {
-    /// Privilege escalation method: "sudo", "doas", "pkexec", "none", or "auto".
+    /// Privilege escalation method: `sudo`, `doas`, `pkexec`, `none`, or `auto`.
     #[serde(default = "default_privilege")]
     pub privilege: String,
 
-    /// Allowed runtime cages. Empty = any. E.g. ["host", "docker"].
+    /// Allowed runtime cages. Empty = any. E.g. `["host", "docker"]`.
     #[serde(default)]
     pub allowed_runtimes: Vec<String>,
 
@@ -81,7 +81,7 @@ pub struct ToolRequirement {
     /// The binary name to probe (defaults to the tool key).
     pub command: Option<String>,
 
-    /// Arguments to get the version. Defaults to ["--version"].
+    /// Arguments to get the version. Defaults to `["--version"]`.
     pub version_args: Option<Vec<String>>,
 
     /// URL to the source of truth for latest version / releases.
@@ -96,7 +96,7 @@ pub struct ToolRequirement {
     pub latest_cmd: Option<String>,
 
     /// Arguments for the latest-version command.
-    /// E.g. ["view", "skills", "version"].
+    /// E.g. `["view", "skills", "version"]`.
     pub latest_args: Option<Vec<String>>,
 }
 
@@ -110,6 +110,7 @@ fn default_true() -> bool {
 
 impl HealthConfig {
     /// Load from `.repo/health.toml`. Returns `None` if the file doesn't exist.
+    #[must_use]
     pub fn load(repo_root: &Path) -> Option<Self> {
         let path = repo_root.join(".repo").join("health.toml");
         let content = std::fs::read_to_string(&path).ok()?;
@@ -123,6 +124,7 @@ impl HealthConfig {
     }
 
     /// Serialize to TOML string.
+    #[must_use]
     pub fn to_toml(&self) -> String {
         // toml::to_string_pretty unwraps safely for our types.
         toml::to_string_pretty(self).unwrap_or_default()
@@ -130,6 +132,7 @@ impl HealthConfig {
 }
 
 /// Generate a blank config template with comments.
+#[must_use]
 pub fn blank_template() -> &'static str {
     include_str!("../../../defaults/health.toml")
 }
@@ -142,6 +145,7 @@ struct ToolMeta {
 }
 
 /// Well-known tool metadata (url, install hint, latest-version check).
+#[expect(clippy::too_many_lines)]
 fn tool_metadata(name: &str) -> ToolMeta {
     let npm_latest = |pkg: &str| -> (Option<String>, Option<Vec<String>>) {
         (
@@ -267,6 +271,7 @@ fn tool_metadata(name: &str) -> ToolMeta {
 }
 
 /// Build a `HealthConfig` by probing the current environment.
+#[must_use]
 pub fn snapshot_current(checks: &[(String, Option<String>)], cage: &str) -> HealthConfig {
     let mut tools = BTreeMap::new();
 
@@ -353,6 +358,7 @@ fn which_exists(cmd: &str) -> bool {
 /// Check the latest available version for a tool.
 /// Uses `latest_cmd`/`latest_args` from config, falling back to built-in knowledge.
 /// Returns `None` if no check is available or it fails.
+#[must_use]
 pub fn check_latest_version(name: &str, cfg: Option<&HealthConfig>) -> Option<String> {
     // Try config first.
     let (cmd, args) = if let Some(req) = cfg.and_then(|c| c.tools.get(name)) {
@@ -403,4 +409,212 @@ pub fn check_latest_version(name: &str, cfg: Option<&HealthConfig>) -> Option<St
     // For npm view output, it's just a version number.
     let ver = extract_version_number(raw.trim());
     if ver.is_empty() { None } else { Some(ver) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let unique = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("therepo-health-{name}-{nanos}-{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_health_file(dir: &Path, content: &str) {
+        let repo_dir = dir.join(".repo");
+        fs::create_dir_all(&repo_dir).unwrap();
+        let path = repo_dir.join("health.toml");
+        fs::File::create(&path)
+            .unwrap()
+            .write_all(content.as_bytes())
+            .unwrap();
+    }
+
+    fn script_output(script: &str, name: &str) -> PathBuf {
+        let path = temp_dir(name).join("latest.sh");
+        fs::File::create(&path)
+            .unwrap()
+            .write_all(script.as_bytes())
+            .unwrap();
+        path
+    }
+
+    #[test]
+    fn load_round_trips_serialized_config() {
+        let dir = temp_dir("load-roundtrip");
+        write_health_file(
+            &dir,
+            r#"
+[environment]
+privilege = "doas"
+allowed_runtimes = ["host", "docker"]
+required_shell = "zsh"
+
+[tools.rustc]
+required = true
+min_version = "1.85.0"
+url = "https://example.com/rust"
+install = "rustup"
+
+[checks.build]
+command = "cargo test"
+description = "Run the test suite"
+severity = "warning"
+hint = "Fix the tests first"
+"#,
+        );
+
+        let cfg = HealthConfig::load(&dir).expect("config should load");
+
+        assert_eq!(cfg.environment.privilege, "doas");
+        assert_eq!(cfg.environment.allowed_runtimes, vec!["host", "docker"]);
+        assert_eq!(cfg.environment.required_shell.as_deref(), Some("zsh"));
+        assert_eq!(cfg.tools.get("rustc").and_then(|t| t.min_version.as_deref()), Some("1.85.0"));
+        assert_eq!(cfg.checks.get("build").map(|c| c.severity.as_str()), Some("warning"));
+
+        let rendered = cfg.to_toml();
+        let parsed: HealthConfig = toml::from_str(&rendered).expect("rendered config should parse");
+        assert_eq!(parsed.environment.privilege, "doas");
+        assert_eq!(parsed.tools.get("rustc").and_then(|t| t.install.as_deref()), Some("rustup"));
+
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn load_returns_none_for_missing_file() {
+        let dir = temp_dir("load-missing");
+
+        assert!(HealthConfig::load(&dir).is_none());
+
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn extract_version_number_returns_clean_semver_fragment() {
+        assert_eq!(
+            extract_version_number("rustc 1.94.0 (4a4ef493e 2026-03-02)"),
+            "1.94.0"
+        );
+        assert_eq!(extract_version_number("v20.11.0"), "20.11.0");
+        assert_eq!(extract_version_number("Python 3.12.3"), "3.12.3");
+        assert_eq!(extract_version_number("no version present"), "");
+    }
+
+    #[test]
+    fn check_latest_version_uses_stdout_when_present() {
+        let script = script_output("#!/usr/bin/env sh\necho 2.3.4\n", "latest-stdout");
+        let mut tools = BTreeMap::new();
+        tools.insert(
+            "demo".to_string(),
+            ToolRequirement {
+                required: true,
+                min_version: None,
+                exact_version: None,
+                command: None,
+                version_args: None,
+                url: None,
+                install: None,
+                latest_cmd: Some("sh".into()),
+                latest_args: Some(vec![script.to_string_lossy().into_owned()]),
+            },
+        );
+        let cfg = HealthConfig {
+            environment: EnvironmentConfig::default(),
+            tools,
+            checks: BTreeMap::new(),
+        };
+
+        assert_eq!(check_latest_version("demo", Some(&cfg)), Some("2.3.4".into()));
+
+        fs::remove_dir_all(script.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn check_latest_version_uses_stderr_when_stdout_is_empty() {
+        let script = script_output("#!/usr/bin/env sh\necho 3.4.5 1>&2\n", "latest-stderr");
+        let mut tools = BTreeMap::new();
+        tools.insert(
+            "demo".to_string(),
+            ToolRequirement {
+                required: true,
+                min_version: None,
+                exact_version: None,
+                command: None,
+                version_args: None,
+                url: None,
+                install: None,
+                latest_cmd: Some("sh".into()),
+                latest_args: Some(vec![script.to_string_lossy().into_owned()]),
+            },
+        );
+        let cfg = HealthConfig {
+            environment: EnvironmentConfig::default(),
+            tools,
+            checks: BTreeMap::new(),
+        };
+
+        assert_eq!(check_latest_version("demo", Some(&cfg)), Some("3.4.5".into()));
+
+        fs::remove_dir_all(script.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn check_latest_version_returns_none_when_no_version_is_found() {
+        let script = script_output("#!/usr/bin/env sh\necho not-a-version\n", "latest-empty");
+        let mut tools = BTreeMap::new();
+        tools.insert(
+            "demo".to_string(),
+            ToolRequirement {
+                required: true,
+                min_version: None,
+                exact_version: None,
+                command: None,
+                version_args: None,
+                url: None,
+                install: None,
+                latest_cmd: Some("sh".into()),
+                latest_args: Some(vec![script.to_string_lossy().into_owned()]),
+            },
+        );
+        let cfg = HealthConfig {
+            environment: EnvironmentConfig::default(),
+            tools,
+            checks: BTreeMap::new(),
+        };
+
+        assert_eq!(check_latest_version("demo", Some(&cfg)), None);
+
+        fs::remove_dir_all(script.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn snapshot_current_captures_versions_and_cage() {
+        let cfg = snapshot_current(
+            &[
+                ("rustc".to_string(), Some("rustc 1.95.1 (abc 2026-03-01)".to_string())),
+                ("node".to_string(), Some("v20.11.0".to_string())),
+                ("empty".to_string(), Some("nonsense".to_string())),
+            ],
+            "docker",
+        );
+
+        assert_eq!(cfg.environment.allowed_runtimes, vec!["docker"]);
+        assert!(cfg.tools.contains_key("rustc"));
+        assert_eq!(cfg.tools.get("rustc").and_then(|t| t.min_version.as_deref()), Some("1.95.1"));
+        assert_eq!(cfg.tools.get("node").and_then(|t| t.min_version.as_deref()), Some("20.11.0"));
+        assert_eq!(cfg.tools.get("empty").and_then(|t| t.min_version.as_deref()), None);
+    }
 }

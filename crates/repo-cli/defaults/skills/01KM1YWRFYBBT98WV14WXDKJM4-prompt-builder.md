@@ -11,6 +11,7 @@ description: >
   "engineer a prompt", "write a prompt document", "build a prompt pipeline", "I need a prompt
   that...", "make a prompt for...", "generate a PromptDocument". Also trigger when the user
   describes an LLM task and wants it formalized — even without explicitly saying "prompt".
+allowed-tools: Read Write
 ---
 
 # Prompt Builder

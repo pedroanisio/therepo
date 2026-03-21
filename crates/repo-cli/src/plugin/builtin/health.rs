@@ -90,6 +90,7 @@ fn cmd_export(repo_root: &Path) {
 
 // ── check: main health check ────────────────────────────────────────
 
+#[expect(clippy::too_many_lines)]
 fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
     let health_cfg = HealthConfig::load(repo_root);
     let has_config = health_cfg.is_some();
@@ -209,8 +210,9 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
             let args: Vec<&str> = req
                 .version_args
                 .as_ref()
-                .map(|a| a.iter().map(|s| s.as_str()).collect())
-                .unwrap_or_else(|| vec!["--version"]);
+                .map_or_else(|| vec!["--version"], |a| {
+                    a.iter().map(String::as_str).collect()
+                });
 
             let custom_check = Check::tool(cmd, &args, parse_first_line).display_name(name);
             let result = custom_check.execute();
@@ -283,20 +285,17 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
     println!("{}", bold("Repository"));
     println!();
 
-    match run_cmd("git", &["branch", "--show-current"]) {
-        Some(branch) => {
-            println!("  {} {:<w_name$}  {}", green("ok"), "branch", dim(&branch));
-            pass += 1;
-        }
-        None => {
-            println!(
-                "  {} {:<w_name$}  {}",
-                red("!!"),
-                "branch",
-                yellow("not a git repository"),
-            );
-            fail += 1;
-        }
+    if let Some(branch) = run_cmd("git", &["branch", "--show-current"]) {
+        println!("  {} {:<w_name$}  {}", green("ok"), "branch", dim(&branch));
+        pass += 1;
+    } else {
+        println!(
+            "  {} {:<w_name$}  {}",
+            red("!!"),
+            "branch",
+            yellow("not a git repository"),
+        );
+        fail += 1;
     }
 
     let config_path = repo_root.join(".repo").join("config.toml");
@@ -535,7 +534,7 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool) {
                         red(&check.description)
                     };
 
-                    println!("  {} {:<w_name$}  {}", icon, name, msg);
+                    println!("  {icon} {name:<w_name$}  {msg}");
 
                     let stderr = String::from_utf8_lossy(&out.stderr);
                     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -692,9 +691,9 @@ fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
     for i in 0..len {
         let a = va.get(i).copied().unwrap_or(0);
         let b = vb.get(i).copied().unwrap_or(0);
-        match a.cmp(&b) {
-            std::cmp::Ordering::Equal => continue,
-            ord => return ord,
+        let ord = a.cmp(&b);
+        if ord != std::cmp::Ordering::Equal {
+            return ord;
         }
     }
     std::cmp::Ordering::Equal
@@ -966,11 +965,12 @@ fn detect_cage() -> Cage {
         }
     }
     if let Ok(val) = std::env::var("container") {
-        return match val.as_str() {
-            "docker" => Cage::Docker,
-            "podman" => Cage::Podman,
-            "lxc" => Cage::Lxc,
-            _ => Cage::Docker,
+        return if val == "podman" {
+            Cage::Podman
+        } else if val == "lxc" {
+            Cage::Lxc
+        } else {
+            Cage::Docker
         };
     }
     if let Ok(version) = std::fs::read_to_string("/proc/version")
@@ -984,9 +984,8 @@ fn detect_cage() -> Cage {
 // ── Available shells ────────────────────────────────────────────────
 
 fn detect_shells() -> Vec<String> {
-    let content = match std::fs::read_to_string("/etc/shells") {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
+    let Ok(content) = std::fs::read_to_string("/etc/shells") else {
+        return Vec::new();
     };
 
     let mut shells: Vec<String> = content
@@ -1005,4 +1004,212 @@ fn detect_shells() -> Vec<String> {
     shells.sort();
     shells.dedup();
     shells
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plugin::builtin::health_config::{EnvironmentConfig, ToolRequirement};
+    use std::collections::BTreeMap;
+
+    fn health_cfg_for_tool(name: &str, requirement: ToolRequirement) -> HealthConfig {
+        let mut tools = BTreeMap::new();
+        tools.insert(name.to_string(), requirement);
+        HealthConfig {
+            environment: EnvironmentConfig::default(),
+            tools,
+            checks: BTreeMap::new(),
+        }
+    }
+
+    mod compare_versions {
+        use super::*;
+
+        #[test]
+        fn handles_numeric_segments() {
+            assert_eq!(
+                compare_versions("1.70.0", "1.9.0"),
+                std::cmp::Ordering::Greater
+            );
+        }
+
+        #[test]
+        fn treats_missing_segments_as_zero() {
+            assert_eq!(compare_versions("1.2", "1.2.0"), std::cmp::Ordering::Equal);
+        }
+
+        #[test]
+        fn treats_non_numeric_segments_as_zero() {
+            assert_eq!(
+                compare_versions("1.beta.3", "1.0.4"),
+                std::cmp::Ordering::Less
+            );
+        }
+    }
+
+    mod validate_tool_version {
+        use super::*;
+
+        #[test]
+        fn returns_none_when_tool_is_not_configured() {
+            let cfg = HealthConfig::default();
+            assert_eq!(validate_tool_version("rustc", "rustc 1.85.0", &cfg), None);
+        }
+
+        #[test]
+        fn rejects_exact_version_mismatch() {
+            let cfg = health_cfg_for_tool(
+                "rustc",
+                ToolRequirement {
+                    required: true,
+                    min_version: None,
+                    exact_version: Some("1.85.0".into()),
+                    command: None,
+                    version_args: None,
+                    url: None,
+                    install: None,
+                    latest_cmd: None,
+                    latest_args: None,
+                },
+            );
+
+            assert_eq!(
+                validate_tool_version("rustc", "rustc 1.84.0", &cfg),
+                Some("expected 1.85.0, got 1.84.0".into())
+            );
+        }
+
+        #[test]
+        fn rejects_lower_than_minimum_version() {
+            let cfg = health_cfg_for_tool(
+                "rustc",
+                ToolRequirement {
+                    required: true,
+                    min_version: Some("1.85.0".into()),
+                    exact_version: None,
+                    command: None,
+                    version_args: None,
+                    url: None,
+                    install: None,
+                    latest_cmd: None,
+                    latest_args: None,
+                },
+            );
+
+            assert_eq!(
+                validate_tool_version("rustc", "rustc 1.84.0", &cfg),
+                Some("minimum 1.85.0, got 1.84.0".into())
+            );
+        }
+
+        #[test]
+        fn accepts_satisfied_constraints() {
+            let cfg = health_cfg_for_tool(
+                "rustc",
+                ToolRequirement {
+                    required: true,
+                    min_version: Some("1.84.0".into()),
+                    exact_version: None,
+                    command: None,
+                    version_args: None,
+                    url: None,
+                    install: None,
+                    latest_cmd: None,
+                    latest_args: None,
+                },
+            );
+
+            assert_eq!(validate_tool_version("rustc", "rustc 1.85.1", &cfg), None);
+        }
+    }
+
+    mod parsers {
+        use super::*;
+
+        #[test]
+        fn extract_version_number_finds_first_semver_like_word() {
+            assert_eq!(
+                extract_version_number("cargo 1.85.1 (d73d2caf9 2024-12-31)"),
+                "1.85.1"
+            );
+        }
+
+        #[test]
+        fn parse_helpers_return_expected_strings() {
+            assert_eq!(parse_first_line("first\nsecond\n"), "first");
+            assert_eq!(parse_git("git version 2.49.0"), "2.49.0");
+            assert_eq!(parse_npm("10.9.0"), "npm 10.9.0");
+            assert_eq!(parse_pnpm("9.1.0"), "pnpm 9.1.0");
+            assert_eq!(
+                parse_pip("pip 24.0 from /tmp/site-packages/pip (python 3.12)"),
+                "pip 24.0 (python 3.12)"
+            );
+            assert_eq!(parse_go("go version go1.22.1 linux/amd64"), "go1.22.1");
+            assert_eq!(parse_bash("GNU bash, version 5.2.0"), "GNU bash, version 5.2.0");
+            assert_eq!(cage_name(&Cage::Host), "host");
+        }
+    }
+
+    mod check_execute {
+        use super::*;
+
+        #[test]
+        fn returns_ok_from_stdout_on_success() {
+            let check = Check::tool("/bin/sh", &["-c", "echo 1.2.3"], parse_first_line)
+                .display_name("tool");
+
+            match check.execute() {
+                CheckResult::Ok(version) => assert_eq!(version, "1.2.3"),
+                _ => panic!("expected success"),
+            }
+        }
+
+        #[test]
+        fn falls_back_to_stderr_when_stdout_is_empty() {
+            let check = Check::tool("/bin/sh", &["-c", "echo 4.5.6 1>&2"], parse_first_line)
+                .display_name("tool");
+
+            match check.execute() {
+                CheckResult::Ok(version) => assert_eq!(version, "4.5.6"),
+                _ => panic!("expected stderr-derived success"),
+            }
+        }
+
+        #[test]
+        fn returns_parsed_stderr_output_for_non_zero_exit() {
+            let check = Check::tool(
+                "/bin/sh",
+                &["-c", "echo tool 7.8.9 1>&2; exit 2"],
+                parse_first_line,
+            )
+            .display_name("tool");
+
+            match check.execute() {
+                CheckResult::Ok(version) => assert_eq!(version, "tool 7.8.9"),
+                _ => panic!("expected parsed stderr output"),
+            }
+        }
+
+        #[test]
+        fn returns_error_when_non_zero_exit_has_no_parseable_output() {
+            let check =
+                Check::tool("/bin/sh", &["-c", "exit 3"], parse_first_line).display_name("tool");
+
+            match check.execute() {
+                CheckResult::Error(message) => assert!(!message.is_empty()),
+                _ => panic!("expected error"),
+            }
+        }
+
+        #[test]
+        fn returns_missing_when_command_does_not_exist() {
+            let check = Check::tool("definitely-not-a-command", &[], parse_first_line)
+                .display_name("tool");
+
+            match check.execute() {
+                CheckResult::Missing => {}
+                _ => panic!("expected missing command"),
+            }
+        }
+    }
 }

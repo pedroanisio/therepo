@@ -1,7 +1,10 @@
 ---
 name: incremental-validation
+version: "1.0.0"
 description: Enforce continuous validation throughout implementation — validate after every TDD phase, code change, and plan generation step instead of batching all checks at the end. Use when implementing features, fixing bugs, generating plans, or reviewing code to ensure issues are caught immediately while context is fresh.
-ULID: 01KM1BKXK7ST4DT8P6YC1BTMRD
+allowed-tools: Bash Read Glob Grep
+metadata:
+  ulid: 01KM1BKXK7ST4DT8P6YC1BTMRD
 ---
 
 # Incremental Validation

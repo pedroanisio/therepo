@@ -1,7 +1,11 @@
 ---
 name: adv-planning
+version: "1.0.0"
 description: Generate formal, schema-compliant execution plans (JSON) from a confirmed mental model. Use this skill when the user asks to create a plan, generate an execution plan, turn a mental model into a plan, or produce a formal plan for M/L/XL tasks. Also trigger when the user says "create adv-plan", "generate adv-plan from mental model", "formal adv-plan", "adv-plan generation", "execution adv-plan". This skill produces structured PlanSchema JSON — not informal markdown plans. If you need an informal markdown plan, use the format-plan prompt instead.
-ULID: 01KM18ZD23GC3TDVN7W0GX2000
+allowed-tools: Bash Read Write Glob Grep
+effort: max
+metadata:
+  ulid: 01KM18ZD23GC3TDVN7W0GX2000
 ---
 
 # Advanced Plan Generation

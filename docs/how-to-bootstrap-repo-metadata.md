@@ -31,7 +31,18 @@ This creates:
 
 Existing files are not overwritten.
 
-### 3. Initialize prompt snippets
+### 3. Deploy built-in skills to agent directories
+
+```bash
+repo skills deploy
+```
+
+This writes all 10 built-in skills into `~/.agents/skills/` and creates symlinks
+for every detected AI agent (Claude Code, Codex, etc.) so they are immediately
+available without an external registry. Safe to re-run; use `--force` to update
+after upgrading the `repo` binary.
+
+### 4. Initialize prompt snippets
 
 ```bash
 repo prompt init
@@ -39,7 +50,7 @@ repo prompt init
 
 This writes built-in prompt snippets into `.repo/prompts/` without replacing files that are already present.
 
-### 4. Review the generated files
+### 5. Review the generated files
 
 At minimum, inspect:
 

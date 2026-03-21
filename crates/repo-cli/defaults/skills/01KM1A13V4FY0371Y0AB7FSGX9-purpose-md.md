@@ -1,15 +1,16 @@
 ---
 name: purpose-md
+version: "1.0.0"
 description: Create, review, or improve a PURPOSE.md file for any software project. Use when users want to articulate why a project exists, define guiding principles, or add a PURPOSE.md to a repository. Invoke for project purpose, mission statement, Golden Circle, project philosophy, or "why does this exist."
 license: CC0-1.0
+allowed-tools: Read Write Glob
 metadata:
-  version: "1.0.0"
+  ulid: 01KM1A13V4FY0371Y0AB7FSGX9
   domain: documentation
   triggers: PURPOSE.md, project purpose, why does this exist, mission statement, Golden Circle, project philosophy, guiding principles, non-goals
   role: specialist
   scope: documentation
   output-format: markdown
-ULID: 01KM1A13V4FY0371Y0AB7FSGX9
 ---
 
 # PURPOSE.md Author

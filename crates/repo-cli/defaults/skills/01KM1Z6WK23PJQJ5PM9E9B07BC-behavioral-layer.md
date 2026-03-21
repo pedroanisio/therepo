@@ -1,21 +1,21 @@
 ---
 name: behavioral-layer
+version: "1.0.0"
 description: >
-  Define, install, and manage behavioral traits and values that shape how Claude
-  reasons, prioritizes, and responds — independent of any specific task. Trigger
-  this skill whenever the user asks to "create a trait", "define a value",
-  "install a behavior", "set a behavioral rule", "add a reasoning principle",
-  "define a disposition", "create a behavioral layer", "set a thinking style",
-  "define how Claude should reason", or any variation of encoding persistent
-  behavioral directives, epistemic postures, reasoning heuristics, or value
-  orderings. Also trigger when the user says things like "always do X before Y",
-  "never assume Z", "prioritize A over B in all responses", "adopt this
-  mindset", or "think like a ___". If the user is defining *how Claude should
-  behave or think* rather than *what Claude should produce*, use this skill.
-  Trigger even for casual phrasing like "can you always be more ___" or "I want
-  you to reason differently about ___".
-  
-  ULID: 01KM1Z6WK23PJQJ5PM9E9B07BC
+  Define, install, and manage behavioral traits that shape how Claude reasons,
+  prioritizes, and responds — independent of any specific task. Use when the
+  user asks to create a trait, define a value, install a behavior, set a
+  behavioral rule, add a reasoning principle, define a disposition, set a
+  thinking style, or encode persistent behavioral directives, epistemic
+  postures, reasoning heuristics, or value orderings. Also trigger for
+  "always do X before Y", "never assume Z", "prioritize A over B", "adopt
+  this mindset", "think like a ___", "can you always be more ___", or any
+  request where the user is defining *how Claude should behave or think*
+  rather than *what Claude should produce*.
+allowed-tools: Read Write Glob
+effort: high
+metadata:
+  ulid: 01KM1Z6WK23PJQJ5PM9E9B07BC
 ---
 
 # Behavioral Layer

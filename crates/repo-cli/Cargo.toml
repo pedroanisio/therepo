@@ -1,12 +1,14 @@
 [package]
 name = "therepo"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["therepo contributors"]
 description = "General-purpose repository maintenance CLI with plugin system"
 readme = "README.md"
 documentation = "https://docs.rs/therepo"
+homepage = "https://github.com/pedroanisio/therepo"
+repository = "https://github.com/pedroanisio/therepo"
 license = "MIT OR Apache-2.0"
 keywords = ["repo", "cli", "docs", "tooling", "workflow"]
 categories = ["command-line-utilities", "development-tools"]
@@ -20,6 +22,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 ulid = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [lints.rust]
 future-incompatible = "warn"

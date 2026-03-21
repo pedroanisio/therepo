@@ -55,7 +55,10 @@ Use `X.0.0` for breaking changes:
 3. Run `cargo check --manifest-path crates/repo-cli/Cargo.toml`.
 4. Run `cargo package --manifest-path crates/repo-cli/Cargo.toml --list`.
 5. Run `cargo publish --manifest-path crates/repo-cli/Cargo.toml --dry-run`.
-6. Verify `scripts/install.sh` still matches your release asset naming.
+6. Run `./scripts/check-coverage.sh`.
+7. Verify `scripts/install.sh` still matches your release asset naming.
+
+The same coverage command is enforced in CI and by the repository-managed `pre-push` hook.
 
 ## Publishing To crates.io
 
@@ -89,7 +92,7 @@ The GitHub release workflow renders and uploads a release-ready installer as `th
 For local testing before that, set the repository slug yourself:
 
 ```bash
-export THEREPO_REPO=owner/therepo
+export THEREPO_REPO=pedroanisio/therepo
 ./scripts/install.sh
 ```
 
@@ -102,4 +105,8 @@ The repository also includes [`dist-workspace.toml`](../dist-workspace.toml) wit
 - PowerShell installers
 - common desktop targets
 
-Once the final GitHub repository URL is known, add `repository` and `homepage` metadata to `crates/repo-cli/Cargo.toml` and run `dist generate` to produce fully managed release automation.
+The repository and homepage metadata now point to:
+
+- `https://github.com/pedroanisio/therepo`
+
+The next step is to run `dist generate` and refine the generated automation if you want to fully hand off release packaging to `cargo-dist`.

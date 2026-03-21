@@ -1,7 +1,11 @@
 ---
 name: mental-model
+version: "1.0.0"
 description: Build a structured mental model that captures baseline state, target state, gaps, assumptions, and open questions before generating a formal execution plan. Use this skill whenever the user asks to create, update, or regenerate a mental model, or when starting L/XL tasks, encountering scope-ambiguous language ("completion," "finish," "everything"), referencing existing plans, or working with codebases that have more than 20 files in affected scope zones. Also trigger when the user says "mental model", "pre-plan checkpoint", "scope analysis", or "understand the codebase before planning".
-ULID: 01KM188YV2CJ26QH6KNH2NWG1Z
+allowed-tools: Bash Read Write Glob Grep
+effort: high
+metadata:
+  ulid: 01KM188YV2CJ26QH6KNH2NWG1Z
 ---
 
 # Mental Model

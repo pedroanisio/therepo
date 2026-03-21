@@ -39,6 +39,7 @@ pub struct PluginInfo {
 }
 
 /// Discover all available plugins (built-in + external).
+#[must_use]
 pub fn discover_plugins(repo_root: &Path) -> Vec<PluginInfo> {
     let mut plugins = Vec::new();
 

@@ -9,7 +9,7 @@ INSTALL_DIR="${THEREPO_INSTALL_DIR:-${CARGO_HOME:-$HOME/.cargo}/bin}"
 ARCHIVE_BASENAME="${THEREPO_ARCHIVE_BASENAME:-therepo}"
 
 if [ -z "$REPO_SLUG" ] || [ "$REPO_SLUG" = "__GITHUB_REPOSITORY__" ]; then
-    echo "error: set THEREPO_REPO to your GitHub repo, for example: owner/therepo" >&2
+    echo "error: set THEREPO_REPO to your GitHub repo, for example: pedroanisio/therepo" >&2
     exit 1
 fi
 

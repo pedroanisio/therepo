@@ -1,5 +1,7 @@
 use crate::output::{bold, dim, green, red, yellow};
 use serde::{Deserialize, Serialize};
+use std::fmt::Write as _;
+use std::io::Write as _;
 use std::path::Path;
 
 // ── Embedded built-in assets ───────────────────────────────────────
@@ -86,68 +88,271 @@ const BUILTIN_SCHEMAS: &[DefaultAsset] = &[DefaultAsset {
     content: include_str!("../../../defaults/schemas/01KM18ZD23GC3TDVN7W0GX2000-plan-schema.ts"),
 }];
 
-// All 10 default skills — superset of BUILTIN_SKILLS. Used by `repo skills deploy`
-// to install directly into the agent skills ecosystem (.agents/skills/).
-const ALL_DEFAULT_SKILLS: &[DefaultAsset] = &[
-    DefaultAsset {
-        filename: "01KM17JDVNJ333TN3R5BGZB5QS-tsdoc-voice.md",
-        content: include_str!(
-            "../../../defaults/skills/01KM17JDVNJ333TN3R5BGZB5QS-tsdoc-voice.md"
-        ),
+// ── Skill bundle types ───────────────────────────────────────────────────────
+
+/// A single file to be written into a skill's subdirectory on deploy.
+struct BundledFile {
+    /// Target filename within the subdirectory (e.g. `"tsdoc-spec.md"`).
+    filename: &'static str,
+    content: &'static str,
+}
+
+/// Source of a skill's content: either plain text or a `.skill` ZIP archive.
+///
+/// **Plain** — the classic `SKILL.md`/`.skill` text format:
+/// a YAML-frontmatter header followed by Markdown instructions.
+///
+/// **Zip** — the Anthropic distribution format used by claude.ai and the API.
+/// The ZIP contains `SKILL.md` at the root plus optional `references/`,
+/// `scripts/`, and `assets/` subdirectories. `cmd_deploy` extracts the archive
+/// directly into `~/.agents/skills/<name>/` at install time.
+enum SkillSource {
+    /// Plain text (`.md` or plain `.skill`). Written directly as `SKILL.md`.
+    Plain(DefaultAsset),
+    /// ZIP archive (`.skill` with `PK` magic). Extracted in-place on deploy.
+    Zip {
+        /// Source filename — used only for error messages.
+        filename: &'static str,
+        /// Raw ZIP bytes embedded with `include_bytes!`.
+        bytes: &'static [u8],
     },
-    DefaultAsset {
-        filename: "01KM188YV2CJ26QH6KNH2NWG1Z-mental-model.md",
-        content: include_str!(
-            "../../../defaults/skills/01KM188YV2CJ26QH6KNH2NWG1Z-mental-model.md"
-        ),
+}
+
+/// A complete deployable skill.
+///
+/// For `SkillSource::Plain` sources, `references`/`scripts`/`examples` are
+/// written from the embedded text arrays. For `SkillSource::Zip` sources,
+/// the archive already contains all supporting files and these arrays must
+/// be empty.
+struct SkillBundle {
+    source: SkillSource,
+    /// Written into `~/.agents/skills/<name>/references/`.
+    references: &'static [BundledFile],
+    /// Written into `~/.agents/skills/<name>/scripts/` and made executable.
+    scripts: &'static [BundledFile],
+    /// Written into `~/.agents/skills/<name>/examples/`.
+    examples: &'static [BundledFile],
+}
+
+// All 10 built-in skills with their associated supporting files.
+// Used by `repo skills deploy` to produce self-contained skill directories,
+// matching the pattern of e.g. `rust-best-practices` (SKILL.md + references/).
+const ALL_SKILL_BUNDLES: &[SkillBundle] = &[
+    SkillBundle {
+        source: SkillSource::Plain(DefaultAsset {
+            filename: "01KM17JDVNJ333TN3R5BGZB5QS-tsdoc-voice.md",
+            content: include_str!(
+                "../../../defaults/skills/01KM17JDVNJ333TN3R5BGZB5QS-tsdoc-voice.md"
+            ),
+        }),
+        references: &[BundledFile {
+            filename: "tsdoc-spec.md",
+            content: include_str!(
+                "../../../defaults/references/01KM17JDVNJ333TN3R5BGZB5QS-tsdoc-spec.md"
+            ),
+        }],
+        scripts: &[],
+        examples: &[],
     },
-    DefaultAsset {
-        filename: "01KM18ZD23GC3TDVN7W0GX2000-adv-plan.md",
-        content: include_str!(
-            "../../../defaults/skills/01KM18ZD23GC3TDVN7W0GX2000-adv-plan.md"
-        ),
+    SkillBundle {
+        source: SkillSource::Plain(DefaultAsset {
+            filename: "01KM188YV2CJ26QH6KNH2NWG1Z-mental-model.md",
+            content: include_str!(
+                "../../../defaults/skills/01KM188YV2CJ26QH6KNH2NWG1Z-mental-model.md"
+            ),
+        }),
+        references: &[BundledFile {
+            filename: "mental-model-schema.md",
+            content: include_str!(
+                "../../../defaults/references/01KM188YV2CJ26QH6KNH2NWG1Z-mental-model-schema.md"
+            ),
+        }],
+        scripts: &[BundledFile {
+            filename: "treemeta.sh",
+            content: include_str!("../../../defaults/scripts/treemeta.sh"),
+        }],
+        examples: &[],
     },
-    DefaultAsset {
-        filename: "01KM1A13V4FY0371Y0AB7FSGX9-purpose-md.md",
-        content: include_str!(
-            "../../../defaults/skills/01KM1A13V4FY0371Y0AB7FSGX9-purpose-md.md"
-        ),
+    SkillBundle {
+        source: SkillSource::Plain(DefaultAsset {
+            filename: "01KM18ZD23GC3TDVN7W0GX2000-adv-plan.md",
+            content: include_str!(
+                "../../../defaults/skills/01KM18ZD23GC3TDVN7W0GX2000-adv-plan.md"
+            ),
+        }),
+        references: &[
+            BundledFile {
+                filename: "plan-schema-fields.md",
+                content: include_str!(
+                    "../../../defaults/references/01KM18ZD23GC3TDVN7W0GX2000-plan-schema-fields.md"
+                ),
+            },
+            BundledFile {
+                filename: "plan-schema.ts",
+                content: include_str!(
+                    "../../../defaults/schemas/01KM18ZD23GC3TDVN7W0GX2000-plan-schema.ts"
+                ),
+            },
+        ],
+        scripts: &[BundledFile {
+            filename: "treemeta.sh",
+            content: include_str!("../../../defaults/scripts/treemeta.sh"),
+        }],
+        examples: &[],
     },
-    DefaultAsset {
-        filename: "01KM1A156P4VEY0KT304QXA466-testing-standards.md",
-        content: include_str!(
-            "../../../defaults/skills/01KM1A156P4VEY0KT304QXA466-testing-standards.md"
-        ),
+    SkillBundle {
+        source: SkillSource::Plain(DefaultAsset {
+            filename: "01KM1A13V4FY0371Y0AB7FSGX9-purpose-md.md",
+            content: include_str!(
+                "../../../defaults/skills/01KM1A13V4FY0371Y0AB7FSGX9-purpose-md.md"
+            ),
+        }),
+        references: &[],
+        scripts: &[],
+        examples: &[],
     },
-    DefaultAsset {
-        filename: "01KM1BKXK7ST4DT8P6YC1BTMRD-incremental-validation.md",
-        content: include_str!(
-            "../../../defaults/skills/01KM1BKXK7ST4DT8P6YC1BTMRD-incremental-validation.md"
-        ),
+    SkillBundle {
+        source: SkillSource::Plain(DefaultAsset {
+            filename: "01KM1A156P4VEY0KT304QXA466-testing-standards.md",
+            content: include_str!(
+                "../../../defaults/skills/01KM1A156P4VEY0KT304QXA466-testing-standards.md"
+            ),
+        }),
+        references: &[],
+        scripts: &[],
+        examples: &[],
     },
-    DefaultAsset {
-        filename: "01KM1BVKWT984AB0A4WPZRWWGX-review-plan.md",
-        content: include_str!(
-            "../../../defaults/skills/01KM1BVKWT984AB0A4WPZRWWGX-review-plan.md"
-        ),
+    SkillBundle {
+        source: SkillSource::Plain(DefaultAsset {
+            filename: "01KM1BKXK7ST4DT8P6YC1BTMRD-incremental-validation.md",
+            content: include_str!(
+                "../../../defaults/skills/01KM1BKXK7ST4DT8P6YC1BTMRD-incremental-validation.md"
+            ),
+        }),
+        references: &[],
+        scripts: &[],
+        examples: &[],
     },
-    DefaultAsset {
-        filename: "01KM1YWRFYBBT98WV14WXDKJM4-prompt-builder.md",
-        content: include_str!(
-            "../../../defaults/skills/01KM1YWRFYBBT98WV14WXDKJM4-prompt-builder.md"
-        ),
+    SkillBundle {
+        source: SkillSource::Plain(DefaultAsset {
+            filename: "01KM1BVKWT984AB0A4WPZRWWGX-review-plan.md",
+            content: include_str!(
+                "../../../defaults/skills/01KM1BVKWT984AB0A4WPZRWWGX-review-plan.md"
+            ),
+        }),
+        // review-plan reads the same plan schema as adv-planning.
+        references: &[
+            BundledFile {
+                filename: "plan-schema-fields.md",
+                content: include_str!(
+                    "../../../defaults/references/01KM18ZD23GC3TDVN7W0GX2000-plan-schema-fields.md"
+                ),
+            },
+            BundledFile {
+                filename: "plan-schema.ts",
+                content: include_str!(
+                    "../../../defaults/schemas/01KM18ZD23GC3TDVN7W0GX2000-plan-schema.ts"
+                ),
+            },
+        ],
+        scripts: &[],
+        examples: &[],
     },
-    DefaultAsset {
-        filename: "01KM1Z6WK23PJQJ5PM9E9B07BC-behavioral-layer.md",
-        content: include_str!(
-            "../../../defaults/skills/01KM1Z6WK23PJQJ5PM9E9B07BC-behavioral-layer.md"
-        ),
+    SkillBundle {
+        source: SkillSource::Plain(DefaultAsset {
+            filename: "01KM1YWRFYBBT98WV14WXDKJM4-prompt-builder.md",
+            content: include_str!(
+                "../../../defaults/skills/01KM1YWRFYBBT98WV14WXDKJM4-prompt-builder.md"
+            ),
+        }),
+        references: &[
+            BundledFile {
+                filename: "schema-reference.md",
+                content: include_str!(
+                    "../../../defaults/references/01KM1YWRFYBBT98WV14WXDKJM4-schema-reference.md"
+                ),
+            },
+            BundledFile {
+                filename: "prompt-schema.ts",
+                content: include_str!(
+                    "../../../defaults/schemas/01KM1YWRFYBBT98WV14WXDKJM4-prompt-schema.ts"
+                ),
+            },
+        ],
+        scripts: &[],
+        examples: &[],
     },
-    DefaultAsset {
-        filename: "01KM23VWVQWH62NBFF0TTFWVXR-doc-hygiene.md",
-        content: include_str!(
-            "../../../defaults/skills/01KM23VWVQWH62NBFF0TTFWVXR-doc-hygiene.md"
-        ),
+    SkillBundle {
+        source: SkillSource::Plain(DefaultAsset {
+            filename: "01KM1Z6WK23PJQJ5PM9E9B07BC-behavioral-layer.md",
+            content: include_str!(
+                "../../../defaults/skills/01KM1Z6WK23PJQJ5PM9E9B07BC-behavioral-layer.md"
+            ),
+        }),
+        references: &[BundledFile {
+            filename: "trait-spec.md",
+            content: include_str!(
+                "../../../defaults/references/01KM1Z6WK23PJQJ5PM9E9B07BC-trait-spec.md"
+            ),
+        }],
+        scripts: &[],
+        examples: &[
+            BundledFile {
+                filename: "trait-example.md",
+                content: include_str!(
+                    "../../../defaults/examples/01KM1Z6WK23PJQJ5PM9E9B07BC-trait.md"
+                ),
+            },
+            BundledFile {
+                filename: "trait-template.md",
+                content: include_str!(
+                    "../../../defaults/templates/01KM1Z6WK23PJQJ5PM9E9B07BC-trait-template.md"
+                ),
+            },
+        ],
+    },
+    SkillBundle {
+        source: SkillSource::Plain(DefaultAsset {
+            filename: "01KM23VWVQWH62NBFF0TTFWVXR-doc-hygiene.md",
+            content: include_str!(
+                "../../../defaults/skills/01KM23VWVQWH62NBFF0TTFWVXR-doc-hygiene.md"
+            ),
+        }),
+        references: &[
+            BundledFile {
+                filename: "detection-patterns.md",
+                content: include_str!(
+                    "../../../defaults/references/01KM23VWVQWH62NBFF0TTFWVXR-detection-patterns.md"
+                ),
+            },
+            BundledFile {
+                filename: "sync-checks.md",
+                content: include_str!(
+                    "../../../defaults/references/01KM23VWVQWH62NBFF0TTFWVXR-sync-checks.md"
+                ),
+            },
+            BundledFile {
+                filename: "report-template.md",
+                content: include_str!(
+                    "../../../defaults/references/01KM23VWVQWH62NBFF0TTFWVXR-report-template.md"
+                ),
+            },
+        ],
+        scripts: &[],
+        examples: &[],
+    },
+    // ── ZIP-packaged skills (.skill Anthropic distribution format) ────────────
+    SkillBundle {
+        source: SkillSource::Zip {
+            filename: "cli-ux-patterns.skill",
+            bytes: include_bytes!(
+                "../../../defaults/skills/cli-ux-patterns.skill"
+            ),
+        },
+        // ZIP already contains SKILL.md + references/ — no extra arrays needed.
+        references: &[],
+        scripts: &[],
+        examples: &[],
     },
 ];
 
@@ -189,14 +394,14 @@ pub struct SkillEntry {
     pub name: String,
 
     /// Source repository or URL for installation.
-    /// E.g. "obra/superpowers" or "https://github.com/vercel-labs/agent-skills"
+    /// E.g. `obra/superpowers` or <https://github.com/vercel-labs/agent-skills>
     pub source: String,
 
     /// Specific skill within the source repo (for multi-skill repos).
     /// If omitted, installs all / matches by name.
     pub skill: Option<String>,
 
-    /// Target agents. E.g. ["claude-code", "codex"]. Empty = all detected.
+    /// Target agents. E.g. `["claude-code", "codex"]`. Empty = all detected.
     #[serde(default)]
     pub agents: Vec<String>,
 
@@ -213,6 +418,7 @@ fn default_scope() -> String {
 }
 
 impl SkillsConfig {
+    #[must_use]
     pub fn load(repo_root: &Path) -> Option<Self> {
         let path = repo_root.join(".repo").join("skills.toml");
         let content = std::fs::read_to_string(&path).ok()?;
@@ -225,6 +431,7 @@ impl SkillsConfig {
         }
     }
 
+    #[must_use]
     pub fn to_toml(&self) -> String {
         toml::to_string_pretty(self).unwrap_or_default()
     }
@@ -402,6 +609,7 @@ fn cmd_export(repo_root: &Path) {
 
 // ── sync ────────────────────────────────────────────────────────
 
+#[expect(clippy::too_many_lines)]
 fn cmd_sync(repo_root: &Path) {
     let installed = scan_installed_skills(repo_root);
     let existing = SkillsConfig::load(repo_root);
@@ -429,7 +637,7 @@ fn cmd_sync(repo_root: &Path) {
             // Update description from disk if the existing one is empty.
             let mut entry = existing_entry.clone();
             if entry.description.is_none() || entry.description.as_deref() == Some("") {
-                entry.description = on_disk.description.clone();
+                entry.description.clone_from(&on_disk.description);
             }
             merged.push(entry);
             kept += 1;
@@ -545,14 +753,11 @@ fn cmd_sync(repo_root: &Path) {
 // ── check ───────────────────────────────────────────────────────────
 
 fn cmd_check(repo_root: &Path) {
-    let config = match SkillsConfig::load(repo_root) {
-        Some(cfg) => cfg,
-        None => {
-            println!("  {} no .repo/skills.toml found", dim("--"),);
-            println!("  Run `repo skills init` to create one,");
-            println!("  or `repo skills export` to snapshot installed skills.");
-            return;
-        }
+    let Some(config) = SkillsConfig::load(repo_root) else {
+        println!("  {} no .repo/skills.toml found", dim("--"),);
+        println!("  Run `repo skills init` to create one,");
+        println!("  or `repo skills export` to snapshot installed skills.");
+        return;
     };
 
     if config.skills.is_empty() {
@@ -597,17 +802,18 @@ fn cmd_check(repo_root: &Path) {
             );
 
             // Show install command.
-            match build_install_cmd(entry) {
-                Some(install_cmd) => println!(
+            if let Some(install_cmd) = build_install_cmd(entry) {
+                println!(
                     "    {:<w_name$}  {}",
                     "",
                     dim(&format!("install: {install_cmd}")),
-                ),
-                None => println!(
+                );
+            } else {
+                println!(
                     "    {:<w_name$}  {}",
                     "",
                     yellow("fill in 'source' in .repo/skills.toml to enable install"),
-                ),
+                );
             }
 
             fail += 1;
@@ -648,9 +854,8 @@ enum InstallOutcome {
 }
 
 fn run_install(entry: &SkillEntry) -> InstallOutcome {
-    let cmd = match build_install_cmd(entry) {
-        Some(c) => c,
-        None => return InstallOutcome::NoSource,
+    let Some(cmd) = build_install_cmd(entry) else {
+        return InstallOutcome::NoSource;
     };
 
     let result = std::process::Command::new("sh")
@@ -684,12 +889,9 @@ fn run_install(entry: &SkillEntry) -> InstallOutcome {
 }
 
 fn cmd_install(repo_root: &Path) {
-    let config = match SkillsConfig::load(repo_root) {
-        Some(cfg) => cfg,
-        None => {
-            eprintln!("  No .repo/skills.toml found. Run `repo skills init` first.");
-            std::process::exit(1);
-        }
+    let Some(config) = SkillsConfig::load(repo_root) else {
+        eprintln!("  No .repo/skills.toml found. Run `repo skills init` first.");
+        std::process::exit(1);
     };
 
     let skills_dir = repo_root.join(".agents").join("skills");
@@ -781,12 +983,9 @@ fn cmd_install(repo_root: &Path) {
 // ── fix ─────────────────────────────────────────────────────────────
 
 fn cmd_fix(repo_root: &Path) {
-    let config = match SkillsConfig::load(repo_root) {
-        Some(cfg) => cfg,
-        None => {
-            eprintln!("  No .repo/skills.toml found. Run `repo skills init` first.");
-            std::process::exit(1);
-        }
+    let Some(config) = SkillsConfig::load(repo_root) else {
+        eprintln!("  No .repo/skills.toml found. Run `repo skills init` first.");
+        std::process::exit(1);
     };
 
     if config.skills.is_empty() {
@@ -824,7 +1023,6 @@ fn cmd_fix(repo_root: &Path) {
         // Probe: run the install command and check if skill is not found.
         print!("  {} {:<w_name$}  checking... ", dim(".."), entry.name);
         // Flush stdout so the "checking..." appears before the (slow) npx call.
-        use std::io::Write;
         let _ = std::io::stdout().flush();
 
         let outcome = run_install(entry);
@@ -838,7 +1036,7 @@ fn cmd_fix(repo_root: &Path) {
                 println!(
                     "    {:<w_name$}  {}",
                     "",
-                    dim(&format!("removed — fix source/skill fields to re-add")),
+                    dim("removed — fix source/skill fields to re-add"),
                 );
                 removed.push((entry.name.clone(), "skill not found at source"));
             }
@@ -911,12 +1109,12 @@ fn build_install_cmd(entry: &SkillEntry) -> Option<String> {
 
     // --skill flag.
     if let Some(ref skill) = entry.skill {
-        cmd.push_str(&format!(" --skill {skill}"));
+        let _ = write!(cmd, " --skill {skill}");
     }
 
     // --agent flags.
     for agent in &entry.agents {
-        cmd.push_str(&format!(" -a {agent}"));
+        let _ = write!(cmd, " -a {agent}");
     }
 
     // --global flag.
@@ -974,6 +1172,116 @@ fn scan_installed_skills(repo_root: &Path) -> Vec<SkillEntry> {
 
 // ── deploy helpers ───────────────────────────────────────────────────────────
 
+/// Returns the skill `name` from whichever source type a bundle uses.
+fn skill_name_from_bundle(bundle: &SkillBundle) -> Option<String> {
+    match &bundle.source {
+        SkillSource::Plain(asset) => {
+            parse_skill_name(asset.content).map(str::to_owned)
+        }
+        SkillSource::Zip { bytes, .. } => {
+            // Read SKILL.md from the ZIP and parse the name field.
+            let cursor = std::io::Cursor::new(*bytes);
+            let mut archive = zip::ZipArchive::new(cursor).ok()?;
+            let mut skill_md = archive.by_name("SKILL.md").ok()?;
+            let mut content = String::new();
+            std::io::Read::read_to_string(&mut skill_md, &mut content).ok()?;
+            parse_skill_name(&content).map(str::to_owned)
+        }
+    }
+}
+
+/// Extract a `.skill` ZIP archive into `~/.agents/skills/<name>/`.
+///
+/// Returns `(skill_name, ref_count, script_count, example_count)` on success.
+fn deploy_skill_zip(
+    bytes: &[u8],
+    source_filename: &str,
+    canonical_base: &std::path::Path,
+    force: bool,
+) -> Result<(String, u32, u32, u32), String> {
+    let cursor = std::io::Cursor::new(bytes);
+    let mut archive =
+        zip::ZipArchive::new(cursor).map_err(|e| format!("invalid ZIP in {source_filename}: {e}"))?;
+
+    // Read SKILL.md first to extract the skill name.
+    let skill_name = {
+        let mut skill_md_file = archive
+            .by_name("SKILL.md")
+            .map_err(|_| format!("{source_filename}: no SKILL.md found in ZIP"))?;
+        let mut content = String::new();
+        std::io::Read::read_to_string(&mut skill_md_file, &mut content)
+            .map_err(|e| format!("{source_filename}: read SKILL.md: {e}"))?;
+        parse_skill_name(&content)
+            .ok_or_else(|| format!("{source_filename}: no name: field in SKILL.md frontmatter"))?
+            .to_owned()
+    };
+
+    let skill_dir = canonical_base.join(&skill_name);
+
+    // Skip if already installed and not --force.
+    if skill_dir.join("SKILL.md").exists() && !force {
+        return Err(format!("__skip__{skill_name}"));
+    }
+
+    std::fs::create_dir_all(&skill_dir)
+        .map_err(|e| format!("{skill_name}: mkdir failed: {e}"))?;
+
+    let mut refs = 0u32;
+    let mut scripts = 0u32;
+    let mut examples = 0u32;
+
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|e| format!("{skill_name}: zip entry {i}: {e}"))?;
+
+        if entry.is_dir() {
+            continue;
+        }
+
+        let entry_path = entry
+            .enclosed_name()
+            .ok_or_else(|| format!("{skill_name}: unsafe path in ZIP"))?
+            .clone();
+
+        let dest = skill_dir.join(&entry_path);
+
+        if dest.exists() && !force {
+            continue;
+        }
+
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("{skill_name}: mkdir {}: {e}", parent.display()))?;
+        }
+
+        let mut content = Vec::new();
+        std::io::Read::read_to_end(&mut entry, &mut content)
+            .map_err(|e| format!("{skill_name}: read {}: {e}", entry_path.display()))?;
+
+        std::fs::write(&dest, &content)
+            .map_err(|e| format!("{skill_name}: write {}: {e}", dest.display()))?;
+
+        // Count by subdirectory.
+        let top = entry_path.components().next().map(|c| c.as_os_str().to_string_lossy().into_owned());
+        match top.as_deref() {
+            Some("references") => refs += 1,
+            Some("scripts")    => {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755));
+                }
+                scripts += 1;
+            }
+            Some("examples")   => examples += 1,
+            _ => {} // SKILL.md or other root files
+        }
+    }
+
+    Ok((skill_name, refs, scripts, examples))
+}
+
 /// Returns the user's home directory from `$HOME` (Unix) or `%USERPROFILE%` (Windows).
 fn get_home_dir() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME")
@@ -1010,26 +1318,55 @@ fn symlink_target(config_dir: &str, skill_name: &str) -> String {
 
 // ── deploy ───────────────────────────────────────────────────────────────────
 
-fn cmd_deploy(args: &[&str]) {
-    let global = args.iter().any(|a| *a == "--global" || *a == "-g");
-    let force  = args.iter().any(|a| *a == "--force"  || *a == "-f");
-
-    let home = match get_home_dir() {
-        Some(h) => h,
-        None => {
-            eprintln!("{} cannot determine home directory", red("!!"));
-            std::process::exit(1);
+/// Write `files` into `parent/subdir/`, creating the directory if needed.
+/// Returns the count of files successfully written.
+fn write_bundle_subdir(
+    parent: &std::path::Path,
+    subdir: &str,
+    files: &[BundledFile],
+    force: bool,
+    executable: bool,
+) -> u32 {
+    if files.is_empty() {
+        return 0;
+    }
+    let dir = parent.join(subdir);
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        eprintln!("  {} mkdir {}: {e}", yellow("!!"), dir.display());
+        return 0;
+    }
+    let mut written = 0u32;
+    for file in files {
+        let path = dir.join(file.filename);
+        if path.exists() && !force {
+            continue;
         }
+        if let Err(e) = std::fs::write(&path, file.content) {
+            eprintln!("  {} write {}: {e}", yellow("!!"), path.display());
+            continue;
+        }
+        #[cfg(unix)]
+        if executable {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+        written += 1;
+    }
+    written
+}
+
+#[allow(clippy::too_many_lines)]
+fn cmd_deploy(args: &[&str]) {
+    let force = args.iter().any(|a| *a == "--force" || *a == "-f");
+
+    let Some(home) = get_home_dir() else {
+        eprintln!("{} cannot determine home directory", red("!!"));
+        std::process::exit(1);
     };
 
-    // For global scope the canonical base is ~/.agents/skills/.
-    // For project scope we would use the repo root, but deploy is always global —
-    // internal skills are user-level tools, not project-specific artefacts.
-    // (Use --global / default behaviour is always global for this command.)
-    let base = if global || true { home.clone() } else { home.clone() };
-    let canonical_base = base.join(".agents").join("skills");
+    let canonical_base = home.join(".agents").join("skills");
 
-    // Detect which agents have their config directory present under $HOME.
+    // Detect agents whose config dir exists under $HOME.
     let detected: Vec<&KnownAgent> = KNOWN_AGENTS
         .iter()
         .filter(|a| home.join(a.config_dir).is_dir())
@@ -1040,137 +1377,131 @@ fn cmd_deploy(args: &[&str]) {
 
     if detected.is_empty() {
         println!(
-            "  {} no agent config dirs found under {}",
+            "  {} no agent config dirs found — writing to {} only",
             yellow("!!"),
-            dim(&home.display().to_string()),
+            dim("~/.agents/skills/"),
         );
-        println!("  Skills will be written to {} only.", dim("~/.agents/skills/"));
     } else {
         let names: Vec<&str> = detected.iter().map(|a| a.name).collect();
         println!("  {}  {}", dim("agents :"), names.join(", "));
     }
-    println!(
-        "  {}  ~/.agents/skills/",
-        dim("install:"),
-    );
+    println!("  {}  ~/.agents/skills/", dim("install:"));
     println!();
 
     let mut installed = 0u32;
     let mut skipped   = 0u32;
     let mut failed    = 0u32;
 
-    let w = ALL_DEFAULT_SKILLS
+    // Pre-compute display width from skill names across all source types.
+    let w = ALL_SKILL_BUNDLES
         .iter()
-        .filter_map(|a| parse_skill_name(a.content))
-        .map(str::len)
+        .filter_map(skill_name_from_bundle)
+        .map(|n| n.len())
         .max()
         .unwrap_or(0);
 
-    for asset in ALL_DEFAULT_SKILLS {
-        let skill_name = match parse_skill_name(asset.content) {
-            Some(n) => n,
-            None => {
-                eprintln!("  {} could not parse name from {}", red("!!"), asset.filename);
-                failed += 1;
-                continue;
+    for bundle in ALL_SKILL_BUNDLES {
+        // Resolve skill name and install, branching on source type.
+        let (skill_name, refs, scripts, examples) = match &bundle.source {
+            SkillSource::Plain(asset) => {
+                let Some(name) = parse_skill_name(asset.content) else {
+                    eprintln!("  {} could not parse name from {}", red("!!"), asset.filename);
+                    failed += 1;
+                    continue;
+                };
+                let skill_dir = canonical_base.join(name);
+                let skill_md  = skill_dir.join("SKILL.md");
+                if skill_md.exists() && !force {
+                    println!("  {} {:<w$}  {}", dim("--"), name, dim("already installed"));
+                    skipped += 1;
+                    continue;
+                }
+                if let Err(e) = std::fs::create_dir_all(&skill_dir) {
+                    eprintln!("  {} {name}: mkdir failed: {e}", red("!!"));
+                    failed += 1;
+                    continue;
+                }
+                if let Err(e) = std::fs::write(&skill_md, asset.content) {
+                    eprintln!("  {} {name}: write SKILL.md failed: {e}", red("!!"));
+                    failed += 1;
+                    continue;
+                }
+                let r = write_bundle_subdir(&skill_dir, "references", bundle.references, force, false);
+                let s = write_bundle_subdir(&skill_dir, "scripts",    bundle.scripts,    force, true);
+                let e = write_bundle_subdir(&skill_dir, "examples",   bundle.examples,   force, false);
+                (name.to_owned(), r, s, e)
+            }
+            SkillSource::Zip { filename, bytes } => {
+                match deploy_skill_zip(bytes, filename, &canonical_base, force) {
+                    Ok(result) => result,
+                    Err(e) if e.starts_with("__skip__") => {
+                        let name = &e["__skip__".len()..];
+                        println!("  {} {:<w$}  {}", dim("--"), name, dim("already installed"));
+                        skipped += 1;
+                        continue;
+                    }
+                    Err(e) => {
+                        eprintln!("  {} {filename}: {e}", red("!!"));
+                        failed += 1;
+                        continue;
+                    }
+                }
             }
         };
+        let skill_name = skill_name.as_str();
 
-        let skill_dir = canonical_base.join(skill_name);
-        let skill_md  = skill_dir.join("SKILL.md");
-
-        // Skip already-installed unless --force.
-        if skill_md.exists() && !force {
-            println!("  {} {:<w$}  {}", dim("--"), skill_name, dim("already installed"));
-            skipped += 1;
-            continue;
-        }
-
-        // Write canonical SKILL.md.
-        if let Err(e) = std::fs::create_dir_all(&skill_dir) {
-            eprintln!("  {} {skill_name}: mkdir failed: {e}", red("!!"));
-            failed += 1;
-            continue;
-        }
-        if let Err(e) = std::fs::write(&skill_md, asset.content) {
-            eprintln!("  {} {skill_name}: write failed: {e}", red("!!"));
-            failed += 1;
-            continue;
-        }
-
-        // Create per-agent symlinks.
-        let mut linked:  Vec<&str> = Vec::new();
-        let mut skipped_link: Vec<&str> = Vec::new();
+        // Per-agent symlinks.
+        let mut linked: Vec<&str> = Vec::new();
 
         for agent in &detected {
             let agent_skills_dir = home.join(agent.config_dir).join("skills");
-
             if let Err(e) = std::fs::create_dir_all(&agent_skills_dir) {
-                eprintln!(
-                    "  {} {skill_name}: mkdir {}: {e}",
-                    yellow("!!"),
-                    agent_skills_dir.display(),
-                );
+                eprintln!("  {} {skill_name}: mkdir {}: {e}", yellow("!!"), agent_skills_dir.display());
                 continue;
             }
-
             let link_path = agent_skills_dir.join(skill_name);
             let target    = symlink_target(agent.config_dir, skill_name);
 
-            // Remove stale link/file when --force, otherwise skip.
             let exists = link_path.exists() || link_path.symlink_metadata().is_ok();
             if exists {
-                if force {
-                    let _ = std::fs::remove_file(&link_path);
-                } else {
-                    skipped_link.push(agent.name);
-                    continue;
-                }
+                if force { let _ = std::fs::remove_file(&link_path); }
+                else { continue; }
             }
 
             #[cfg(unix)]
             let result = std::os::unix::fs::symlink(&target, &link_path);
             #[cfg(not(unix))]
-            let result = std::fs::copy(&skill_md, link_path.join("SKILL.md")).map(|_| ());
+            let result = std::fs::copy(skill_dir.join("SKILL.md"), link_path.join("SKILL.md")).map(|_| ());
 
             match result {
                 Ok(()) => linked.push(agent.name),
-                Err(e) => eprintln!(
-                    "  {} {skill_name}: symlink for {}: {e}",
-                    yellow("!!"),
-                    agent.name,
-                ),
+                Err(e) => eprintln!("  {} {skill_name}: symlink {}: {e}", yellow("!!"), agent.name),
             }
         }
 
-        let link_info = if linked.is_empty() && skipped_link.is_empty() {
-            dim("(no agents)")
-        } else if linked.is_empty() {
-            dim("(links already exist)")
+        // Build extras annotation: show bundled subdirs when non-empty.
+        let mut extras: Vec<String> = Vec::new();
+        if refs     > 0 { extras.push(format!("{refs}ref")); }
+        if scripts  > 0 { extras.push(format!("{scripts}script")); }
+        if examples > 0 { extras.push(format!("{examples}example")); }
+
+        let agents_str = if linked.is_empty() { String::new() } else { linked.join(", ") };
+        let extras_str = if extras.is_empty() {
+            String::new()
         } else {
-            dim(&linked.join(", "))
+            format!("  {}", dim(&format!("[{}]", extras.join(" "))))
         };
 
-        println!("  {} {:<w$}  {link_info}", green("ok"), skill_name);
+        println!("  {} {:<w$}  {}{extras_str}", green("ok"), skill_name, dim(&agents_str));
         installed += 1;
     }
 
     println!();
-    print!(
-        "  {} installed, {} skipped",
-        green(&installed.to_string()),
-        skipped,
-    );
-    if failed > 0 {
-        print!(", {} {}", red(&failed.to_string()), red("failed"));
-    }
+    print!("  {} installed, {} skipped", green(&installed.to_string()), skipped);
+    if failed > 0 { print!(", {} {}", red(&failed.to_string()), red("failed")); }
     println!();
-
     if skipped > 0 {
-        println!(
-            "  Run {} to overwrite existing installs.",
-            dim("`repo skills deploy --force`"),
-        );
+        println!("  Run {} to overwrite.", dim("`repo skills deploy --force`"));
     }
 }
 
@@ -1202,4 +1533,196 @@ fn parse_skill_description(path: &Path) -> Option<String> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_dir(label: &str) -> std::path::PathBuf {
+        let unique = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("therepo-skills-{label}-{nanos}-{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    mod build_install_cmd {
+        use super::*;
+
+        #[test]
+        fn returns_none_when_source_is_empty() {
+            let entry = SkillEntry {
+                name: "testing-standards".into(),
+                source: String::new(),
+                skill: None,
+                agents: Vec::new(),
+                scope: "project".into(),
+                description: None,
+            };
+
+            assert_eq!(super::build_install_cmd(&entry), None);
+        }
+
+        #[test]
+        fn includes_skill_agents_global_and_non_interactive_flags() {
+            let entry = SkillEntry {
+                name: "testing-standards".into(),
+                source: "supercent-io/skills-template".into(),
+                skill: Some("testing-standards".into()),
+                agents: vec!["claude".into(), "codex".into()],
+                scope: "global".into(),
+                description: None,
+            };
+
+            assert_eq!(
+                super::build_install_cmd(&entry).as_deref(),
+                Some(
+                    "npx skills add supercent-io/skills-template --skill testing-standards -a claude -a codex -g -y"
+                )
+            );
+        }
+    }
+
+    mod scan_installed_skills {
+        use super::*;
+
+        #[test]
+        fn ignores_non_skill_entries_and_sorts_results() {
+            let repo_root = temp_dir("scan-installed");
+            let skills_dir = repo_root.join(".agents").join("skills");
+            fs::create_dir_all(&skills_dir).unwrap();
+
+            fs::write(skills_dir.join("README.txt"), "ignored").unwrap();
+
+            let beta = skills_dir.join("beta");
+            fs::create_dir_all(&beta).unwrap();
+            fs::write(beta.join("SKILL.md"), "---\ndescription: Beta skill\n---\n").unwrap();
+
+            let alpha = skills_dir.join("alpha");
+            fs::create_dir_all(&alpha).unwrap();
+            fs::write(alpha.join("SKILL.md"), "---\ndescription: Alpha skill\n---\n").unwrap();
+
+            let empty = skills_dir.join("empty-dir");
+            fs::create_dir_all(&empty).unwrap();
+
+            let entries = super::scan_installed_skills(&repo_root);
+
+            assert_eq!(entries.len(), 2);
+            assert_eq!(entries[0].name, "alpha");
+            assert_eq!(entries[0].description.as_deref(), Some("Alpha skill"));
+            assert_eq!(entries[1].name, "beta");
+            assert_eq!(entries[1].description.as_deref(), Some("Beta skill"));
+
+            fs::remove_dir_all(repo_root).ok();
+        }
+    }
+
+    mod parse_skill_name {
+        #[test]
+        fn returns_none_without_frontmatter() {
+            assert_eq!(super::parse_skill_name("# no frontmatter"), None);
+        }
+
+        #[test]
+        fn returns_name_from_frontmatter() {
+            assert_eq!(
+                super::parse_skill_name("---\nname: testing-standards\n---\nbody"),
+                Some("testing-standards")
+            );
+        }
+    }
+
+    mod symlink_target {
+        #[test]
+        fn computes_depth_for_single_segment_config_dir() {
+            assert_eq!(
+                super::symlink_target(".claude", "testing-standards"),
+                "../../.agents/skills/testing-standards"
+            );
+        }
+
+        #[test]
+        fn computes_depth_for_nested_config_dir() {
+            assert_eq!(
+                super::symlink_target(".config/opencode", "testing-standards"),
+                "../../../.agents/skills/testing-standards"
+            );
+        }
+    }
+
+    mod write_bundle_subdir {
+        use super::*;
+
+        #[test]
+        fn skips_existing_files_without_force_and_overwrites_with_force() {
+            let dir = temp_dir("write-bundle");
+            let parent = dir.join("skill");
+            fs::create_dir_all(&parent).unwrap();
+
+            let files = [BundledFile {
+                filename: "helper.sh",
+                content: "echo first\n",
+            }];
+
+            assert_eq!(super::write_bundle_subdir(&parent, "scripts", &files, false, false), 1);
+            assert_eq!(super::write_bundle_subdir(&parent, "scripts", &files, false, false), 0);
+
+            let updated = [BundledFile {
+                filename: "helper.sh",
+                content: "echo second\n",
+            }];
+            assert_eq!(
+                super::write_bundle_subdir(&parent, "scripts", &updated, true, false),
+                1
+            );
+            assert_eq!(
+                fs::read_to_string(parent.join("scripts").join("helper.sh")).unwrap(),
+                "echo second\n"
+            );
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    mod parse_skill_description {
+        use super::*;
+
+        #[test]
+        fn returns_none_without_frontmatter() {
+            let dir = temp_dir("description-none");
+            let path = dir.join("SKILL.md");
+            fs::write(&path, "# no frontmatter\n").unwrap();
+
+            assert_eq!(super::parse_skill_description(&path), None);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn strips_quotes_and_truncates_long_descriptions() {
+            let dir = temp_dir("description-truncate");
+            let path = dir.join("SKILL.md");
+            let description = "x".repeat(90);
+            fs::write(
+                &path,
+                format!("---\ndescription: \"{description}\"\n---\nbody\n"),
+            )
+            .unwrap();
+
+            let parsed = super::parse_skill_description(&path).unwrap();
+            assert_eq!(parsed.len(), 80);
+            assert!(parsed.ends_with("..."));
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
 }

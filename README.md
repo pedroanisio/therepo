@@ -54,6 +54,7 @@ repo docs
 repo health
 repo prompt init
 repo skills init
+repo skills deploy
 ```
 
 If you only built it locally, invoke the compiled binary from inside that repository:
@@ -110,11 +111,10 @@ The crate-specific README remains at [`crates/repo-cli/README.md`](./crates/repo
 - The project is a single binary crate today.
 - Built-in command implementations are concentrated in `crates/repo-cli/src/plugin/builtin/`.
 - The `docs`, `health`, and `skills` modules currently contain most of the project logic.
-- There is no automated test suite yet.
+- Unit tests live alongside their modules under `#[cfg(test)]`.
 
 ## Next Areas To Improve
 
-- add automated tests around parsing and command behavior
 - complete external plugin dispatch
 - split large built-in modules into smaller units
 - add a workspace-level Cargo manifest if the project grows beyond one crate

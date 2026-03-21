@@ -1,26 +1,22 @@
 ---
 name: doc-hygiene
+version: "1.0.0"
 description: >
   Inspect a codebase to discover, classify, and manage all documentation files.
-  Detects active, stale, deprecated, and orphaned docs. Moves inactive docs to
-  a quarantine zone where the user can safely archive or delete them, and
-  generates TL;DR summaries of anything removed. For active docs (README,
-  CONTRIBUTING, CHANGELOG, API docs, etc.), validates they are in sync with the
-  codebase and recommends automating every variable element — directory trees,
-  file counts, API route tables, dependency lists, badge values, contributor
-  lists, config key inventories, and so on.
-  Use this skill whenever the user mentions "doc cleanup", "stale docs",
-  "documentation audit", "doc hygiene", "dead docs", "outdated README",
-  "docs out of sync", "clean up documentation", "doc rot", "documentation
-  health", "archive old docs", "prune docs", "doc inventory", "sync my
-  README", "automate my docs", "living documentation", "doc freshness",
-  or any request to understand which docs in a repo are still useful and
-  which should be retired. Also trigger when the user says things like
-  "my README is lying", "are my docs up to date", "what docs do I even
-  have", "which docs can I delete", or "help me keep my docs honest".
-  If the user wants to understand, triage, or improve the documentation
-  posture of any codebase, use this skill.
-  ULID: 01KM23VWVQWH62NBFF0TTFWVXR
+  Detects active, stale, deprecated, and orphaned docs; quarantines dead weight
+  with TL;DR summaries; validates active docs against the codebase; recommends
+  automating variable elements (directory trees, file counts, API routes,
+  dependency lists, badge values, config key inventories).
+  Use when the user mentions: doc cleanup, stale docs, documentation audit,
+  doc hygiene, dead docs, outdated README, docs out of sync, doc rot,
+  documentation health, prune docs, doc inventory, sync README, automate docs,
+  living documentation, doc freshness — or says "my README is lying",
+  "are my docs up to date", "which docs can I delete", "help me keep my
+  docs honest", or wants to triage the documentation posture of any codebase.
+allowed-tools: Bash Read Write Glob Grep
+effort: high
+metadata:
+  ulid: 01KM23VWVQWH62NBFF0TTFWVXR
 ---
 
 # Doc-Hygiene
