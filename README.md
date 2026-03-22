@@ -43,6 +43,30 @@ cargo install --path crates/repo-cli
 cargo build --manifest-path crates/repo-cli/Cargo.toml
 ```
 
+### Inspect Test Coverage
+
+Requires [`cargo llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov).
+
+```bash
+./scripts/check-coverage.sh
+```
+
+This prints a summary and fails if line coverage drops below the threshold (default `75`; CI and the pre-push hook enforce `91`). To raise the bar locally:
+
+```bash
+MIN_LINE_COVERAGE=91 ./scripts/check-coverage.sh
+```
+
+To get a full line-by-line HTML report instead:
+
+```bash
+cargo llvm-cov \
+  --manifest-path crates/repo-cli/Cargo.toml \
+  --all-features \
+  --workspace \
+  --open
+```
+
 ### Use It In Your Repository
 
 After installation, change into the repository you want to manage and run:
@@ -89,6 +113,15 @@ This repository now keeps its project documentation split by purpose:
 - [`docs/releasing.md`](./docs/releasing.md): SemVer, publishing, and installer policy
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md): contributor workflow for this codebase
 - [`CHANGELOG.md`](./CHANGELOG.md): notable project changes
+
+## Architecture Decision Records
+
+Significant design decisions are captured as ADRs under [`_docs/adrs/`](./_docs/adrs/). Each record documents the context, decision, and consequences at the time it was made.
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| [2026-03-21](./_docs/adrs/2026-03-21-pre-commit-gates.md) | Pre-Commit Quality Gates | accepted |
+| [2026-03-21](./_docs/adrs/2026-03-21-test-coverage-threshold.md) | Test Coverage Threshold Above 90 Percent | accepted |
 
 The crate-specific README remains at [`crates/repo-cli/README.md`](./crates/repo-cli/README.md).
 

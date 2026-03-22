@@ -209,6 +209,25 @@ fn health_json_emits_machine_readable_report() {
     assert!(value["passed"].is_number());
     assert!(value["warnings"].is_number());
     assert!(value["errors"].is_number());
+    assert!(value["sections"][0]["checks"][0]["recommendation"].is_null() || value["sections"][0]["checks"][0]["recommendation"].is_string());
+}
+
+#[test]
+fn health_human_output_includes_next_steps_for_warnings() {
+    let repo = TempRepo::new("health-next-steps");
+    repo.write(
+        ".repo/health.toml",
+        "[environment]\nprivilege = \"auto\"\nallowed_runtimes = []\n",
+    );
+    std::fs::create_dir_all(repo.path().join(".venv")).unwrap();
+
+    let output = run_health(repo.path(), &[]);
+
+    let text = stdout(&output);
+    assert!(text.contains("Next steps"), "expected next steps block in: {text}");
+    assert!(text.contains("Repository config"), "expected config guidance in: {text}");
+    assert!(text.contains("Repository _docs"), "expected _docs guidance in: {text}");
+    assert!(text.contains("Environment venv"), "expected venv guidance in: {text}");
 }
 
 #[test]

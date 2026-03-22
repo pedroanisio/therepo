@@ -24,6 +24,7 @@ struct HealthCheckRecord {
     status: String,
     summary: String,
     details: Vec<String>,
+    recommendation: Option<String>,
 }
 
 // ── Public entry point ──────────────────────────────────────────────
@@ -164,6 +165,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                         status: "error".into(),
                         summary: format!("{version} ({msg})"),
                         details,
+                        recommendation: tool_recommendation(&check.name, health_cfg.as_ref()),
                     });
                     fail += 1;
                 } else {
@@ -179,6 +181,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                             status: "warning".into(),
                             summary: format!("{version} (update available: {latest})"),
                             details: Vec::new(),
+                            recommendation: Some(format!("update {} to {latest} if this repo depends on the newer release", check.name)),
                         });
                         warn += 1;
                     } else {
@@ -187,6 +190,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                             status: "ok".into(),
                             summary: version.clone(),
                             details: Vec::new(),
+                            recommendation: None,
                         });
                         pass += 1;
                     }
@@ -206,6 +210,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                         status: "error".into(),
                         summary: "required but not found".into(),
                         details,
+                        recommendation: tool_recommendation(&check.name, health_cfg.as_ref()),
                     });
                     fail += 1;
                 } else if verbose {
@@ -214,6 +219,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                         status: "info".into(),
                         summary: "not found".into(),
                         details: Vec::new(),
+                        recommendation: None,
                     });
                 }
             }
@@ -223,6 +229,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                     status: "error".into(),
                     summary: msg.clone(),
                     details: Vec::new(),
+                    recommendation: tool_recommendation(&check.name, health_cfg.as_ref()),
                 });
                 fail += 1;
             }
@@ -259,6 +266,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                             status: "error".into(),
                             summary: format!("{version} ({msg})"),
                             details,
+                            recommendation: tool_recommendation(name, Some(cfg)),
                         });
                         fail += 1;
                     } else {
@@ -274,6 +282,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                                 status: "warning".into(),
                                 summary: format!("{version} (update available: {latest})"),
                                 details: Vec::new(),
+                                recommendation: Some(format!("update {name} to {latest} if this repo depends on the newer release")),
                             });
                             warn += 1;
                         } else {
@@ -282,6 +291,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                                 status: "ok".into(),
                                 summary: version.clone(),
                                 details: Vec::new(),
+                                recommendation: None,
                             });
                             pass += 1;
                         }
@@ -295,6 +305,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                         status: "error".into(),
                         summary: "required but not found".into(),
                         details,
+                        recommendation: tool_recommendation(name, Some(cfg)),
                     });
                     fail += 1;
                 }
@@ -305,6 +316,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                             status: "info".into(),
                             summary: "not found".into(),
                             details: Vec::new(),
+                            recommendation: None,
                         });
                     }
                 }
@@ -314,6 +326,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                         status: "error".into(),
                         summary: msg.clone(),
                         details: Vec::new(),
+                        recommendation: tool_recommendation(name, Some(cfg)),
                     });
                     fail += 1;
                 }
@@ -328,6 +341,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
             status: "ok".into(),
             summary: branch,
             details: Vec::new(),
+            recommendation: None,
         });
         pass += 1;
     } else {
@@ -336,6 +350,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
             status: "error".into(),
             summary: "not a git repository".into(),
             details: Vec::new(),
+            recommendation: Some("run inside a Git checkout or initialize one with `git init`".into()),
         });
         fail += 1;
     }
@@ -347,6 +362,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
             status: "ok".into(),
             summary: ".repo/config.toml".into(),
             details: Vec::new(),
+            recommendation: None,
         });
         pass += 1;
     } else {
@@ -355,6 +371,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
             status: "warning".into(),
             summary: "no .repo/config.toml".into(),
             details: Vec::new(),
+            recommendation: Some("create `.repo/config.toml` if this repo uses repo metadata and hooks".into()),
         });
         warn += 1;
     }
@@ -366,6 +383,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
             status: "ok".into(),
             summary: ".repo/health.toml".into(),
             details: Vec::new(),
+            recommendation: None,
         });
         pass += 1;
     } else {
@@ -374,6 +392,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
             status: "info".into(),
             summary: "no .repo/health.toml (run `repo health init`)".into(),
             details: Vec::new(),
+            recommendation: Some("run `repo health init` to create a baseline health policy for this repo".into()),
         });
     }
 
@@ -389,6 +408,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
             status: "ok".into(),
             summary: subdirs.join(", "),
             details: Vec::new(),
+            recommendation: None,
         });
         pass += 1;
     } else {
@@ -397,6 +417,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
             status: "warning".into(),
             summary: "not found".into(),
             details: Vec::new(),
+            recommendation: Some("create `_docs/` if this repo tracks designs, ADRs, or references with `repo docs`".into()),
         });
         warn += 1;
     }
@@ -410,6 +431,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
             status: "ok".into(),
             summary: short.into(),
             details: Vec::new(),
+            recommendation: None,
         });
         pass += 1;
     }
@@ -442,6 +464,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
             status: "ok".into(),
             summary: label,
             details: Vec::new(),
+            recommendation: None,
         });
         pass += 1;
     } else {
@@ -458,6 +481,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                     .join(", ")
             ),
             details: Vec::new(),
+            recommendation: Some("switch to an allowed runtime or update `.repo/health.toml` to reflect the supported environments".into()),
         });
         fail += 1;
     }
@@ -472,6 +496,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                 status: "error".into(),
                 summary: format!("found {privilege}, expected {expected}"),
                 details: Vec::new(),
+                recommendation: Some("install or use the expected privilege escalation tool, or update `.repo/health.toml`".into()),
             });
             fail += 1;
         } else {
@@ -480,6 +505,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                 status: "ok".into(),
                 summary: privilege,
                 details: Vec::new(),
+                recommendation: None,
             });
             pass += 1;
         }
@@ -489,6 +515,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
             status: "ok".into(),
             summary: privilege,
             details: Vec::new(),
+            recommendation: None,
         });
         pass += 1;
     }
@@ -501,6 +528,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
             status: "warning".into(),
             summary: "none found in /etc/shells".into(),
             details: Vec::new(),
+            recommendation: Some("install a supported login shell or fix `/etc/shells` if shell-based tooling is expected".into()),
         });
     } else {
         // Validate required shell.
@@ -520,6 +548,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                 status: "ok".into(),
                 summary: shells.join(", "),
                 details: Vec::new(),
+                recommendation: None,
             });
             pass += 1;
         } else {
@@ -535,6 +564,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                 status: "error".into(),
                 summary: format!("required shell '{required}' not in: {}", shells.join(", ")),
                 details: Vec::new(),
+                recommendation: Some(format!("install `{required}` or update `.repo/health.toml` to match the supported shell set")),
             });
             fail += 1;
         }
@@ -551,6 +581,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
             status: "ok".into(),
             summary: short,
             details: Vec::new(),
+            recommendation: None,
         });
     }
 
@@ -568,6 +599,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                         status: "ok".into(),
                         summary: check.description.clone(),
                         details: Vec::new(),
+                        recommendation: None,
                     });
                     pass += 1;
                 }
@@ -595,6 +627,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                         status: if is_warn { "warning" } else { "error" }.into(),
                         summary: check.description.clone(),
                         details,
+                        recommendation: check.hint.clone(),
                     });
 
                     if is_warn {
@@ -609,6 +642,7 @@ fn build_report(repo_root: &Path, verbose: bool, check_updates: bool) -> HealthR
                         status: "error".into(),
                         summary: format!("failed to run: {e}"),
                         details: Vec::new(),
+                        recommendation: check.hint.clone(),
                     });
                     fail += 1;
                 }
@@ -705,6 +739,17 @@ fn append_tool_hint_details(details: &mut Vec<String>, name: &str, cfg: Option<&
     if let Some(url) = req.and_then(|r| r.url.as_deref()) {
         details.push(format!("url: {url}"));
     }
+}
+
+fn tool_recommendation(name: &str, cfg: Option<&HealthConfig>) -> Option<String> {
+    let req = cfg.and_then(|c| c.tools.get(name));
+    if let Some(install) = req.and_then(|r| r.install.as_deref()) {
+        return Some(format!("install with `{install}`"));
+    }
+    if let Some(url) = req.and_then(|r| r.url.as_deref()) {
+        return Some(format!("see {url}"));
+    }
+    None
 }
 
 // ── Version validation ──────────────────────────────────────────────
@@ -926,6 +971,7 @@ fn check_virtualenv(checks: &mut Vec<HealthCheckRecord>, pass: &mut u32, warn: &
             status: "ok".into(),
             summary: format!("{short} (active)"),
             details: Vec::new(),
+            recommendation: None,
         });
         *pass += 1;
         return;
@@ -937,6 +983,7 @@ fn check_virtualenv(checks: &mut Vec<HealthCheckRecord>, pass: &mut u32, warn: &
             status: "ok".into(),
             summary: format!("conda: {env}"),
             details: Vec::new(),
+            recommendation: None,
         });
         *pass += 1;
         return;
@@ -948,6 +995,7 @@ fn check_virtualenv(checks: &mut Vec<HealthCheckRecord>, pass: &mut u32, warn: &
             status: "warning".into(),
             summary: "found but not activated".into(),
             details: Vec::new(),
+            recommendation: Some("activate the virtual environment before running Python tasks".into()),
         });
         *warn += 1;
     }
@@ -1005,6 +1053,41 @@ fn print_report(report: &HealthReport) {
             report.errors.to_string()
         },
     );
+
+    let next_steps = collect_next_steps(report);
+    if !next_steps.is_empty() {
+        println!();
+        println!("{}", bold("Next steps"));
+        println!();
+        for step in next_steps {
+            println!("  - {step}");
+        }
+    }
+}
+
+fn collect_next_steps(report: &HealthReport) -> Vec<String> {
+    let mut next_steps = Vec::new();
+
+    for section in &report.sections {
+        for check in &section.checks {
+            if !matches!(check.status.as_str(), "warning" | "error" | "info") {
+                continue;
+            }
+            if let Some(recommendation) = &check.recommendation {
+                let label = match check.status.as_str() {
+                    "error" => "required",
+                    "warning" => "recommended",
+                    _ => "optional",
+                };
+                next_steps.push(format!(
+                    "{} {} ({}): {}",
+                    section.name, check.name, label, recommendation
+                ));
+            }
+        }
+    }
+
+    next_steps
 }
 
 fn detect_privilege() -> String {

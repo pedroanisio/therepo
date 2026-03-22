@@ -1,12 +1,19 @@
 # CLI Reference
 
-This document is a command reference for the installed `repo` CLI. Run the binary from inside the repository you want to inspect or manage.
+This document describes the installed `repo` CLI as it exists today. Run the binary inside the repository you want to inspect or manage.
 
 ## Top-Level Command
 
 ```text
-repo [COMMAND] [OPTIONS]
+repo [OPTIONS] [COMMAND]
 ```
+
+### Global Options
+
+- `--plain` disables ANSI styling in human-readable output
+- `--json` emits machine-readable output where supported
+- `-h`, `--help` prints help
+- `-V`, `--version` prints the version
 
 ### Commands
 
@@ -16,13 +23,26 @@ repo [COMMAND] [OPTIONS]
 - `prompt`
 - `ulid`
 - `plugins`
+- `completions`
+
+### Common Examples
+
+```bash
+repo
+repo --json
+repo docs designs --status accepted
+repo health --verbose --json
+repo prompt list --tag review --json
+repo skills sync --json
+repo completions zsh
+```
 
 ## `repo docs`
 
 Browse repository documentation and stored plans.
 
 ```text
-repo docs [COMMAND] [OPTIONS]
+repo docs [OPTIONS] [COMMAND]
 ```
 
 ### Subcommands
@@ -31,21 +51,34 @@ repo docs [COMMAND] [OPTIONS]
 - `designs`
 - `adrs`
 - `references`
+- `refs` as an alias for `references`
+
+### Command-Specific Options
+
+- `--status <STATUS>` filters listed documents by status
+- `--json` emits machine-readable output for the selected doc list
 
 ### Notes
 
 - `plans` reads from `.repo/storage/`
 - the other kinds read from `_docs/<kind>/`
-- `references` also supports the alias `refs`
-- `--status <STATUS>` filters results
-- `--json` emits machine-readable output
+- when no subcommand is given, `repo docs` shows an overview of all doc kinds
+
+### Examples
+
+```bash
+repo docs
+repo docs plans --json
+repo docs designs --status accepted
+repo docs refs
+```
 
 ## `repo health`
 
-Validate the local development environment.
+Validate the local development environment and repo setup.
 
 ```text
-repo health [COMMAND] [OPTIONS]
+repo health [OPTIONS] [COMMAND]
 ```
 
 ### Subcommands
@@ -53,23 +86,34 @@ repo health [COMMAND] [OPTIONS]
 - `init`
 - `export`
 
-### Options
+### Command-Specific Options
 
 - `-u`, `--check-updates`
 - `-v`, `--verbose`
 
 ### Notes
 
-- When `.repo/health.toml` exists, it validates against declared requirements.
-- Without that file, the command performs a best-effort scan.
-- Update checks may query external registries and tooling.
+- when `.repo/health.toml` exists, `repo health` validates against declared requirements
+- without that file, the command performs a best-effort scan
+- `--json` returns a structured report including sections, check status, details, and recommendations
+- update checks may query external registries and tooling
+
+### Examples
+
+```bash
+repo health
+repo health --verbose
+repo health --check-updates --json
+repo health init
+repo health export
+```
 
 ## `repo skills`
 
 Manage declared agent skills and related built-in assets.
 
 ```text
-repo skills [COMMAND]
+repo skills [OPTIONS] [COMMAND]
 ```
 
 ### Subcommands
@@ -84,32 +128,54 @@ repo skills [COMMAND]
 ### Notes
 
 - declarations live in `.repo/skills.toml`
-- built-in assets are copied into `.repo/skills/`, `.repo/references/`, and `.repo/schemas/` by `init`
+- `init` copies built-in assets into `.repo/skills/`, `.repo/references/`, and `.repo/schemas/`
 - `install` delegates to `npx skills add` for skills declared in `.repo/skills.toml`
-- `deploy` installs all 10 built-in skills directly into `~/.agents/skills/` (no external registry needed) and creates agent-specific symlinks for every detected agent (Claude Code, Codex, …); use `--force` to overwrite existing installs
+- `export`, `sync`, `check` via default invocation, `install`, and `fix` support `--json`
+- `deploy` installs built-in skills into `~/.agents/skills/` and creates agent-specific symlinks for detected agents
+- use `repo skills deploy --force` to overwrite existing installs
+
+### Examples
+
+```bash
+repo skills
+repo skills --json
+repo skills sync --json
+repo skills install
+repo skills deploy --force
+```
 
 ## `repo prompt`
 
 List, show, and materialize reusable prompt snippets.
 
 ```text
-repo prompt [COMMAND] [OPTIONS]
+repo prompt [OPTIONS] [COMMAND]
 ```
 
 ### Subcommands
 
 - `list`
 - `init`
-- `<name>`
+- `<name>` to print a named prompt
 
-### Options
+### Command-Specific Options
 
-- `--tag <TAG>`
+- `--tag <TAG>` filters prompt listings
 
 ### Notes
 
 - built-in prompts are embedded at compile time
 - prompts in `.repo/prompts/` override built-ins by name
+- `repo prompt list --json` emits machine-readable prompt data
+
+### Examples
+
+```bash
+repo prompt
+repo prompt list --tag review --json
+repo prompt format-plan
+repo prompt init
+```
 
 ## `repo ulid`
 
@@ -121,22 +187,59 @@ repo ulid [-n <N>]
 
 ### Options
 
-- `-n <N>`
+- `-n`, `--count <N>` sets how many ULIDs to generate
+
+### Examples
+
+```bash
+repo ulid
+repo ulid -n 3
+```
 
 ## `repo plugins`
 
-List discovered plugins.
+List discovered plugins and inspect individual plugin metadata.
 
 ```text
-repo plugins [list|info]
+repo plugins [OPTIONS] [COMMAND]
 ```
+
+### Subcommands
+
+- `list`
+- `info <NAME>`
 
 ### Notes
 
 - built-in plugins are reported by the binary
 - external plugins are discovered from `.repo/plugins/`
+- `repo plugins --json` emits a machine-readable plugin list
+- `repo plugins info <NAME> --json` emits machine-readable plugin metadata
 - external plugin execution is not implemented yet
-- `plugins info` is currently a placeholder
+
+### Examples
+
+```bash
+repo plugins
+repo plugins --json
+repo plugins info docs
+repo plugins info docs --json
+```
+
+## `repo completions`
+
+Generate shell completion scripts on demand.
+
+```text
+repo completions <bash|elvish|fish|powershell|zsh>
+```
+
+### Examples
+
+```bash
+repo completions zsh
+repo completions bash
+```
 
 ## Exit Behavior
 
@@ -144,6 +247,7 @@ Commands typically exit with a non-zero status on:
 
 - unknown subcommands
 - invalid required arguments
-- file parsing failures that block a command
+- blocking file parsing failures
+- validation failures such as missing required tools or missing declared skills
 
 Some initialization paths are intentionally non-destructive and skip files that already exist.
