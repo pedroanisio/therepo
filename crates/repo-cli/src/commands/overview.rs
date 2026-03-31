@@ -46,7 +46,7 @@ pub fn run(json: bool) -> i32 {
     println!("{}", bold(name));
     println!();
 
-    crate::plugin::builtin::docs::list_all(&repo_root);
+    crate::plugin::builtin::docs::list_all(&repo_root, false);
     println!();
 
     println!(

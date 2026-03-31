@@ -7,7 +7,7 @@ This document defines the release process for `therepo` and the SemVer rules for
 - crates.io package: `therepo`
 - installed binary: `repo`
 
-The package name is for distribution. The binary name is the user-facing command.
+The package name is for distribution. The binary name is the user-facing command. Users install it once and run it inside any repository they want to manage.
 
 ## Versioning Policy
 

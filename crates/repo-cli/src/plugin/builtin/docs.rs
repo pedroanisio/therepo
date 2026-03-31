@@ -2,6 +2,7 @@ use crate::output::{bold, cyan, dim, green, status_color, yellow};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
+use std::io::{self, IsTerminal, Write as _};
 use std::path::Path;
 
 // ── Document model ──────────────────────────────────────────────────
@@ -19,6 +20,31 @@ pub struct PlanPhase {
     pub name: String,
     pub done: usize,
     pub total: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SortMode {
+    Date,
+    Status,
+    Title,
+    Progress,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DetailsMode {
+    None,
+    Incomplete,
+    All,
+}
+
+struct ListOptions {
+    query: Option<String>,
+    status_filter: Option<String>,
+    json_output: bool,
+    sort: SortMode,
+    limit: Option<usize>,
+    details: DetailsMode,
+    interactive: bool,
 }
 
 #[derive(Serialize)]
@@ -99,7 +125,8 @@ pub const ALL_KINDS: [DocKind; 4] = [
 // ── Commands ────────────────────────────────────────────────────────
 
 pub fn run(repo_root: &Path, args: &[&str]) {
-    let subcommand = args.first().copied();
+    let subcommand = args.iter().copied().find(|arg| !arg.starts_with('-'));
+    let json_output = args.contains(&"--json");
 
     if args.iter().any(|a| *a == "--help" || *a == "-h") {
         if let Some(kind) = subcommand.and_then(DocKind::parse) {
@@ -113,7 +140,12 @@ pub fn run(repo_root: &Path, args: &[&str]) {
     match subcommand {
         Some(sub) => {
             if let Some(kind) = DocKind::parse(sub) {
-                let remaining: Vec<&str> = args[1..].to_vec();
+                let remaining: Vec<&str> = args
+                    .iter()
+                    .copied()
+                    .skip_while(|arg| *arg != sub)
+                    .skip(1)
+                    .collect();
                 list_kind(repo_root, kind, &remaining);
             } else {
                 eprintln!("Unknown docs subcommand: {sub}");
@@ -121,7 +153,7 @@ pub fn run(repo_root: &Path, args: &[&str]) {
                 std::process::exit(1);
             }
         }
-        None => list_all(repo_root),
+        None => list_all(repo_root, json_output),
     }
 }
 
@@ -159,7 +191,12 @@ USAGE:
     repo docs {sub} [OPTIONS]
 
 OPTIONS:
+    <QUERY>            Show one document by filename, stem, or title prefix
     --status <STATUS>  Filter by status (e.g. proposal, draft, active, accepted)
+    --sort <SORT>      Sort by date, status, title, or progress
+    --limit <N>        Limit the number of listed documents
+    --details <MODE>   Expand phase details: none, incomplete, or all
+    --interactive      Choose one document interactively from a TTY
     --json             Emit machine-readable JSON instead of a table
     -h, --help         Print this help message
 
@@ -170,7 +207,25 @@ Scans {location} for plan documents.",
     );
 }
 
-pub fn list_all(repo_root: &Path) {
+pub fn list_all(repo_root: &Path, json_output: bool) {
+    if json_output {
+        let payload: Vec<serde_json::Value> = ALL_KINDS
+            .iter()
+            .map(|kind| {
+                let docs = resolve_docs(repo_root, *kind).unwrap_or_default();
+                serde_json::json!({
+                    "kind": kind.subdir(),
+                    "count": docs.len(),
+                })
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "[]".to_string())
+        );
+        return;
+    }
+
     println!("{}", bold("docs overview"));
     println!();
 
@@ -223,6 +278,14 @@ fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) {
         }
     };
 
+    let options = match parse_list_options(args) {
+        Ok(options) => options,
+        Err(message) => {
+            eprintln!("{message}");
+            std::process::exit(1);
+        }
+    };
+
     if docs.is_empty() {
         let location = match kind {
             DocKind::Plans => ".repo/storage/".to_string(),
@@ -232,24 +295,10 @@ fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) {
         return;
     }
 
-    // Validate --status flag.
-    let has_status_flag = args.contains(&"--status");
-    let status_filter = args
-        .windows(2)
-        .find(|w| w[0] == "--status")
-        .map(|w| w[1].to_lowercase());
-
-    if has_status_flag && status_filter.is_none() {
-        eprintln!("Missing value for --status. Usage: --status <STATUS>");
-        std::process::exit(1);
-    }
-
-    let json_output = args.contains(&"--json");
-
-    let filtered: Vec<&Doc> = docs
+    let mut filtered: Vec<&Doc> = docs
         .iter()
         .filter(|d| {
-            if let Some(ref filter) = status_filter {
+            if let Some(ref filter) = options.status_filter {
                 d.status.to_lowercase() == *filter
             } else {
                 true
@@ -257,8 +306,29 @@ fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) {
         })
         .collect();
 
+    sort_docs(&mut filtered, options.sort);
+
+    if let Some(query) = options.query.as_deref() {
+        if let Some(doc) = find_doc(&filtered, query) {
+            filtered = vec![doc];
+        } else {
+            eprintln!("No {} matched `{query}`.", kind.label());
+            eprintln!("Run `repo docs {} --help` for usage.", kind.subdir());
+            std::process::exit(1);
+        }
+    } else if options.interactive {
+        let Some(doc) = pick_doc_interactively(kind, &filtered) else {
+            return;
+        };
+        filtered = vec![doc];
+    }
+
+    if let Some(limit) = options.limit {
+        filtered.truncate(limit);
+    }
+
     if filtered.is_empty() {
-        if json_output {
+        if options.json_output {
             println!("[]");
             return;
         }
@@ -266,12 +336,193 @@ fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) {
         return;
     }
 
-    if json_output {
+    if options.json_output {
         print_json(&filtered);
         return;
     }
 
-    print_table(kind, &filtered);
+    let details = if options.query.is_some() || options.interactive {
+        DetailsMode::All
+    } else {
+        options.details
+    };
+
+    print_table(kind, &filtered, details);
+}
+
+fn parse_list_options(args: &[&str]) -> Result<ListOptions, String> {
+    let mut query = None;
+    let mut status_filter = None;
+    let mut json_output = false;
+    let mut sort = SortMode::Date;
+    let mut limit = None;
+    let mut details = DetailsMode::None;
+    let mut interactive = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i] {
+            "--json" => {
+                json_output = true;
+                i += 1;
+            }
+            "--interactive" => {
+                interactive = true;
+                i += 1;
+            }
+            "--status" => {
+                let value = args.get(i + 1).ok_or("Missing value for --status. Usage: --status <STATUS>")?;
+                status_filter = Some((*value).to_lowercase());
+                i += 2;
+            }
+            "--sort" => {
+                let value = args.get(i + 1).ok_or("Missing value for --sort. Usage: --sort <date|status|title|progress>")?;
+                sort = match *value {
+                    "date" => SortMode::Date,
+                    "status" => SortMode::Status,
+                    "title" => SortMode::Title,
+                    "progress" => SortMode::Progress,
+                    other => return Err(format!("Unknown sort mode: {other}")),
+                };
+                i += 2;
+            }
+            "--limit" => {
+                let value = args.get(i + 1).ok_or("Missing value for --limit. Usage: --limit <N>")?;
+                let parsed = value
+                    .parse::<usize>()
+                    .map_err(|_| format!("Invalid limit: {value}"))?;
+                limit = Some(parsed);
+                i += 2;
+            }
+            "--details" => {
+                let value = args.get(i + 1).ok_or("Missing value for --details. Usage: --details <none|incomplete|all>")?;
+                details = match *value {
+                    "none" => DetailsMode::None,
+                    "incomplete" => DetailsMode::Incomplete,
+                    "all" => DetailsMode::All,
+                    other => return Err(format!("Unknown details mode: {other}")),
+                };
+                i += 2;
+            }
+            value if value.starts_with('-') => {
+                return Err(format!("Unknown docs option: {value}"));
+            }
+            value => {
+                if query.is_some() {
+                    return Err("Only one docs query is supported at a time.".into());
+                }
+                query = Some(value.to_string());
+                i += 1;
+            }
+        }
+    }
+
+    if interactive && json_output {
+        return Err("`--interactive` cannot be combined with `--json`.".into());
+    }
+    if interactive && query.is_some() {
+        return Err("`--interactive` cannot be combined with a docs query.".into());
+    }
+
+    Ok(ListOptions {
+        query,
+        status_filter,
+        json_output,
+        sort,
+        limit,
+        details,
+        interactive,
+    })
+}
+
+fn sort_docs(docs: &mut Vec<&Doc>, sort: SortMode) {
+    match sort {
+        SortMode::Date => docs.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.title.cmp(&b.title))),
+        SortMode::Status => docs.sort_by(|a, b| a.status.cmp(&b.status).then_with(|| a.title.cmp(&b.title))),
+        SortMode::Title => docs.sort_by(|a, b| a.title.cmp(&b.title)),
+        SortMode::Progress => docs.sort_by(|a, b| {
+            plan_score(b)
+                .cmp(&plan_score(a))
+                .then_with(|| b.date.cmp(&a.date))
+                .then_with(|| a.title.cmp(&b.title))
+        }),
+    }
+}
+
+fn find_doc<'a>(docs: &[&'a Doc], query: &str) -> Option<&'a Doc> {
+    let needle = query.to_lowercase();
+    docs.iter()
+        .copied()
+        .find(|doc| doc.file.eq_ignore_ascii_case(query))
+        .or_else(|| {
+            docs.iter().copied().find(|doc| {
+                Path::new(&doc.file)
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .is_some_and(|stem| stem.eq_ignore_ascii_case(query))
+            })
+        })
+        .or_else(|| {
+            docs.iter().copied().find(|doc| {
+                doc.title.to_lowercase().starts_with(&needle) || doc.file.to_lowercase().starts_with(&needle)
+            })
+        })
+}
+
+fn pick_doc_interactively<'a>(kind: DocKind, docs: &[&'a Doc]) -> Option<&'a Doc> {
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+        eprintln!("`--interactive` requires a TTY.");
+        std::process::exit(1);
+    }
+
+    println!("{}", bold(&format!("Select a {}:", kind.label())));
+    for (index, doc) in docs.iter().enumerate() {
+        println!(
+            "  {}. {} {}",
+            index + 1,
+            doc.file,
+            dim(&format!("({})", doc.title))
+        );
+    }
+    print!("> ");
+    let _ = io::stdout().flush();
+
+    let mut input = String::new();
+    if io::stdin().read_line(&mut input).is_err() {
+        eprintln!("Failed to read selection.");
+        std::process::exit(1);
+    }
+
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let choice = trimmed
+        .parse::<usize>()
+        .ok()
+        .and_then(|index| docs.get(index.saturating_sub(1)).copied());
+    if choice.is_none() {
+        eprintln!("Invalid selection: {trimmed}");
+        std::process::exit(1);
+    }
+    choice
+}
+
+fn should_expand_doc(details: DetailsMode, doc: &Doc) -> bool {
+    match details {
+        DetailsMode::None => false,
+        DetailsMode::All => true,
+        DetailsMode::Incomplete => {
+            let progress = plan_progress(&doc.phases);
+            progress.total_phases > 0 && progress.complete_phases < progress.total_phases
+        }
+    }
+}
+
+fn plan_score(doc: &Doc) -> (usize, usize) {
+    let progress = plan_progress(&doc.phases);
+    (progress.complete_phases, progress.done_tasks)
 }
 
 // ── Resolve docs per kind ──────────────────────────────────────────
@@ -849,41 +1100,45 @@ fn parse_plan_phases(content: &str) -> Vec<PlanPhase> {
 // ── Table rendering ─────────────────────────────────────────────────
 
 #[expect(clippy::too_many_lines)]
-fn print_table(kind: DocKind, docs: &[&Doc]) {
+fn print_table(kind: DocKind, docs: &[&Doc], details: DetailsMode) {
     let has_phases = matches!(kind, DocKind::Plans) && docs.iter().any(|d| !d.phases.is_empty());
 
-    let hdr = ("FILE", "TITLE", "VERSION", "STATUS", "DATE");
+    let hdr_file = "FILE";
+    let hdr_title = "TITLE";
+    let hdr_version = "VERSION";
+    let hdr_status = "STATUS";
+    let hdr_date = "DATE";
 
     let w_file = docs
         .iter()
         .map(|d| d.file.len())
         .max()
         .unwrap_or(0)
-        .max(hdr.0.len());
+        .max(hdr_file.len());
     let w_title = docs
         .iter()
         .map(|d| d.title.len())
         .max()
         .unwrap_or(0)
-        .max(hdr.1.len());
+        .max(hdr_title.len());
     let w_ver = docs
         .iter()
         .map(|d| d.version.len())
         .max()
         .unwrap_or(0)
-        .max(hdr.2.len());
+        .max(if matches!(kind, DocKind::Plans) { 0 } else { hdr_version.len() });
     let w_status = docs
         .iter()
         .map(|d| d.status.len())
         .max()
         .unwrap_or(0)
-        .max(hdr.3.len());
+        .max(hdr_status.len());
     let w_date = docs
         .iter()
         .map(|d| d.date.len())
         .max()
         .unwrap_or(0)
-        .max(hdr.4.len());
+        .max(hdr_date.len());
 
     // If we have phases, add a PROGRESS column
     let progress_hdr = "PROGRESS";
@@ -898,14 +1153,31 @@ fn print_table(kind: DocKind, docs: &[&Doc]) {
     };
 
     // Header
-    if has_phases {
+    if has_phases && matches!(kind, DocKind::Plans) {
+        println!(
+            "  {:<w_file$}  {:<w_title$}  {:<w_status$}  {:<w_date$}  {:<w_progress$}",
+            bold(hdr_file),
+            bold(hdr_title),
+            bold(hdr_status),
+            bold(hdr_date),
+            bold(progress_hdr),
+        );
+        println!(
+            "  {}  {}  {}  {}  {}",
+            dim(&"\u{2500}".repeat(w_file)),
+            dim(&"\u{2500}".repeat(w_title)),
+            dim(&"\u{2500}".repeat(w_status)),
+            dim(&"\u{2500}".repeat(w_date)),
+            dim(&"\u{2500}".repeat(w_progress)),
+        );
+    } else if has_phases {
         println!(
             "  {:<w_file$}  {:<w_title$}  {:<w_ver$}  {:<w_status$}  {:<w_date$}  {:<w_progress$}",
-            bold(hdr.0),
-            bold(hdr.1),
-            bold(hdr.2),
-            bold(hdr.3),
-            bold(hdr.4),
+            bold(hdr_file),
+            bold(hdr_title),
+            bold(hdr_version),
+            bold(hdr_status),
+            bold(hdr_date),
             bold(progress_hdr),
         );
         println!(
@@ -920,11 +1192,11 @@ fn print_table(kind: DocKind, docs: &[&Doc]) {
     } else {
         println!(
             "  {:<w_file$}  {:<w_title$}  {:<w_ver$}  {:<w_status$}  {:<w_date$}",
-            bold(hdr.0),
-            bold(hdr.1),
-            bold(hdr.2),
-            bold(hdr.3),
-            bold(hdr.4),
+            bold(hdr_file),
+            bold(hdr_title),
+            bold(hdr_version),
+            bold(hdr_status),
+            bold(hdr_date),
         );
         println!(
             "  {}  {}  {}  {}  {}",
@@ -941,7 +1213,23 @@ fn print_table(kind: DocKind, docs: &[&Doc]) {
         let status_display = status_color(&doc.status);
         let status_padding = w_status.saturating_sub(doc.status.len());
 
-        if has_phases {
+        if has_phases && matches!(kind, DocKind::Plans) {
+            let progress = format_progress_summary(&doc.phases);
+            let progress_colored = color_progress_summary(&doc.phases);
+            let progress_padding = w_progress.saturating_sub(progress.len());
+            println!(
+                "  {:<w_file$}  {:<w_title$}  {}{:>spad$}  {:<w_date$}  {}{:>ppad$}",
+                doc.file,
+                doc.title,
+                status_display,
+                "",
+                doc.date,
+                progress_colored,
+                "",
+                spad = status_padding,
+                ppad = progress_padding,
+            );
+        } else if has_phases {
             let progress = format_progress_summary(&doc.phases);
             let progress_colored = color_progress_summary(&doc.phases);
             let progress_padding = w_progress.saturating_sub(progress.len());
@@ -975,9 +1263,9 @@ fn print_table(kind: DocKind, docs: &[&Doc]) {
     println!();
 
     // Phase details for plans
-    if has_phases {
+    if has_phases && details != DetailsMode::None {
         for doc in docs {
-            if doc.phases.is_empty() {
+            if doc.phases.is_empty() || !should_expand_doc(details, doc) {
                 continue;
             }
             println!("  {} {}", bold(&doc.title), dim("phases:"));
@@ -1005,6 +1293,13 @@ fn print_table(kind: DocKind, docs: &[&Doc]) {
     }
 
     println!("  {} {}(s) found", docs.len(), kind.label());
+    if matches!(kind, DocKind::Plans) && details == DetailsMode::None {
+        println!("  Run {} to inspect one plan.", dim("repo docs plans <query>"));
+        println!(
+            "  Run {} to expand active plans.",
+            dim("repo docs plans --details incomplete")
+        );
+    }
 }
 
 fn format_progress_summary(phases: &[PlanPhase]) -> String {

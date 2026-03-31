@@ -523,12 +523,30 @@ fn install_json_with_no_source_reports_no_source_outcome() {
 
     let output = run_skills(repo.path(), &["install", "--json"]);
 
-    // Exits non-zero because needs_fix is non-empty is not mandatory — let's just check the JSON.
+    assert!(!output.status.success(), "expected install failure for unresolved skill");
     let text = stdout(&output);
     let value: serde_json::Value = serde_json::from_str(&text).unwrap();
     let items = value["items"].as_array().unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0]["outcome"], "no_source");
+}
+
+#[test]
+fn install_with_no_source_returns_non_zero() {
+    let repo = TempRepo::new("skills-install-no-source-exit");
+    let repo_dir = repo.path().join(".repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    std::fs::write(
+        repo_dir.join("skills.toml"),
+        "[[skills]]\nname = \"unresolvable\"\nsource = \"\"\nscope = \"project\"\n",
+    )
+    .unwrap();
+
+    let output = run_skills(repo.path(), &["install"]);
+
+    assert!(!output.status.success(), "expected install failure");
+    let text = stdout(&output);
+    assert!(text.contains("no source"), "expected no source guidance in: {text}");
 }
 
 #[test]

@@ -354,6 +354,17 @@ const ALL_SKILL_BUNDLES: &[SkillBundle] = &[
         scripts: &[],
         examples: &[],
     },
+    SkillBundle {
+        source: SkillSource::Zip {
+            filename: "codebase-requirements.skill",
+            bytes: include_bytes!(
+                "../../../defaults/skills/codebase-requirements.skill"
+            ),
+        },
+        references: &[],
+        scripts: &[],
+        examples: &[],
+    },
 ];
 
 // ── Known agent configurations ───────────────────────────────────────────────
@@ -1133,6 +1144,7 @@ fn cmd_install(repo_root: &Path, json: bool) {
 
     let mut needs_fix: Vec<&str> = Vec::new();
     let mut items = Vec::new();
+    let mut install_failures = 0usize;
 
     for entry in &missing {
         let mut spinner = Spinner::start(format!("installing {}", entry.name));
@@ -1167,6 +1179,7 @@ fn cmd_install(repo_root: &Path, json: bool) {
                     );
                 }
                 needs_fix.push(&entry.name);
+                install_failures += 1;
             }
             InstallOutcome::NotFound { ref source } => {
                 items.push(SkillsInstallItem {
@@ -1189,6 +1202,7 @@ fn cmd_install(repo_root: &Path, json: bool) {
                     );
                 }
                 needs_fix.push(&entry.name);
+                install_failures += 1;
             }
             InstallOutcome::Failed { ref exit_status } => {
                 items.push(SkillsInstallItem {
@@ -1205,6 +1219,7 @@ fn cmd_install(repo_root: &Path, json: bool) {
                         red(&format!("install failed ({exit_status})")),
                     );
                 }
+                install_failures += 1;
             }
             InstallOutcome::Error { ref message } => {
                 items.push(SkillsInstallItem {
@@ -1221,6 +1236,7 @@ fn cmd_install(repo_root: &Path, json: bool) {
                         red(&format!("could not run install: {message}")),
                     );
                 }
+                install_failures += 1;
             }
         }
         if !json {
@@ -1237,6 +1253,9 @@ fn cmd_install(repo_root: &Path, json: bool) {
             "{}",
             serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
         );
+        if install_failures > 0 {
+            std::process::exit(1);
+        }
         return;
     }
 
@@ -1250,6 +1269,10 @@ fn cmd_install(repo_root: &Path, json: bool) {
             "  Run {} to remove them from .repo/skills.toml.",
             bold("repo skills fix"),
         );
+    }
+
+    if install_failures > 0 {
+        std::process::exit(1);
     }
 }
 

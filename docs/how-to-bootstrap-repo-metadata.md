@@ -1,6 +1,6 @@
 # How To Bootstrap Repository Metadata
 
-This guide is for maintainers who have already installed the `repo` binary and want to initialize the metadata it expects inside a target project.
+This guide is for maintainers who have already installed the `repo` binary (a host tool, installed once) and want to initialize the `.repo/` metadata it expects inside a target project. The same binary manages any number of repositories — just `cd` into each one.
 
 ## Goal
 

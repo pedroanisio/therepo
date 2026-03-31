@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 
 const TOP_LEVEL_EXAMPLES: &str = "\
@@ -15,7 +15,9 @@ const DOCS_EXAMPLES: &str = "\
 Examples:
   repo docs
   repo docs plans --json
+  repo docs plans plan-phase-0
   repo docs designs --status accepted
+  repo docs plans --details incomplete --sort progress
   repo docs refs";
 
 const HEALTH_EXAMPLES: &str = "\
@@ -110,12 +112,41 @@ pub enum DocsCommand {
 
 #[derive(Args, Debug, Default)]
 pub struct DocsListArgs {
+    /// Show details for a specific document by filename, stem, or title prefix.
+    pub query: Option<String>,
     /// Filter by status.
     #[arg(long)]
     pub status: Option<String>,
+    /// Sort the result set.
+    #[arg(long, value_enum)]
+    pub sort: Option<DocsSort>,
+    /// Limit the number of listed documents.
+    #[arg(long)]
+    pub limit: Option<usize>,
+    /// Expand phase details in the human-readable output.
+    #[arg(long, value_enum)]
+    pub details: Option<DocsDetails>,
+    /// Interactively choose one document to inspect.
+    #[arg(long)]
+    pub interactive: bool,
     /// Emit machine-readable JSON.
     #[arg(long)]
     pub json: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum DocsSort {
+    Date,
+    Status,
+    Title,
+    Progress,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum DocsDetails {
+    None,
+    Incomplete,
+    All,
 }
 
 #[derive(Args, Debug)]

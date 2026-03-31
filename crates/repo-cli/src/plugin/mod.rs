@@ -41,35 +41,48 @@ pub struct PluginInfo {
 /// Discover all available plugins (built-in + external).
 #[must_use]
 pub fn discover_plugins(repo_root: &Path) -> Vec<PluginInfo> {
-    let mut plugins = Vec::new();
-
-    // Built-in plugins.
-    plugins.push(PluginInfo {
-        name: "docs".into(),
-        version: env!("CARGO_PKG_VERSION").into(),
-        description: "Browse plans, ADRs, and references in _docs/".into(),
-        capabilities: vec![Capability::Command, Capability::Validation],
-        builtin: true,
-        path: None,
-    });
-
-    plugins.push(PluginInfo {
-        name: "prompt".into(),
-        version: env!("CARGO_PKG_VERSION").into(),
-        description: "Reusable prompt snippets for AI agents and workflows".into(),
-        capabilities: vec![Capability::Command],
-        builtin: true,
-        path: None,
-    });
-
-    plugins.push(PluginInfo {
-        name: "ulid".into(),
-        version: env!("CARGO_PKG_VERSION").into(),
-        description: "Generate valid ULIDs".into(),
-        capabilities: vec![Capability::Command],
-        builtin: true,
-        path: None,
-    });
+    let mut plugins = vec![
+        PluginInfo {
+            name: "docs".into(),
+            version: env!("CARGO_PKG_VERSION").into(),
+            description: "Browse plans, ADRs, and references in _docs/".into(),
+            capabilities: vec![Capability::Command, Capability::Validation],
+            builtin: true,
+            path: None,
+        },
+        PluginInfo {
+            name: "health".into(),
+            version: env!("CARGO_PKG_VERSION").into(),
+            description: "Check development environment and repository health".into(),
+            capabilities: vec![Capability::Command, Capability::Validation],
+            builtin: true,
+            path: None,
+        },
+        PluginInfo {
+            name: "skills".into(),
+            version: env!("CARGO_PKG_VERSION").into(),
+            description: "Manage required agent skills".into(),
+            capabilities: vec![Capability::Command],
+            builtin: true,
+            path: None,
+        },
+        PluginInfo {
+            name: "prompt".into(),
+            version: env!("CARGO_PKG_VERSION").into(),
+            description: "Reusable prompt snippets for AI agents and workflows".into(),
+            capabilities: vec![Capability::Command],
+            builtin: true,
+            path: None,
+        },
+        PluginInfo {
+            name: "ulid".into(),
+            version: env!("CARGO_PKG_VERSION").into(),
+            description: "Generate valid ULIDs".into(),
+            capabilities: vec![Capability::Command],
+            builtin: true,
+            path: None,
+        },
+    ];
 
     // External plugins from .repo/plugins/.
     let plugins_dir = repo_root.join(".repo").join("plugins");

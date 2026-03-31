@@ -1,1 +1,2 @@
 crates/repo-cli/target/
+.claude/settings.json

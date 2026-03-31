@@ -2,6 +2,10 @@
 
 This document explains how the `repo` CLI is structured today.
 
+## Deployment Model
+
+`repo` is a host tool: you install it once (via `cargo install` or a release binary) and run it inside any repository you want to manage. Each repository keeps its own `.repo/` metadata directory; the binary itself is not copied per-codebase.
+
 ## High-Level Shape
 
 The project is currently a single Rust binary crate:

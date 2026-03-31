@@ -54,6 +54,14 @@ fn run_docs(repo_root: &Path, args: &[&str]) -> Output {
         .unwrap()
 }
 
+fn run_repo(repo_root: &Path, args: &[&str]) -> Output {
+    Command::new(repo_bin())
+        .args(args)
+        .current_dir(repo_root)
+        .output()
+        .unwrap()
+}
+
 fn stdout(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
@@ -247,4 +255,104 @@ fn json_output_emits_machine_readable_docs() {
     assert_eq!(doc.get("title").and_then(Value::as_str), Some("Accepted design"));
     assert_eq!(doc.get("status").and_then(Value::as_str), Some("accepted"));
     assert_eq!(doc.get("date").and_then(Value::as_str), Some("2026-03-21"));
+}
+
+#[test]
+fn global_json_propagates_to_docs_command() {
+    let repo = TempRepo::new("docs-global-json");
+    repo.write(
+        "_docs/designs/2026-03-21-accepted.md",
+        &design_doc("Accepted design", "accepted", "2026-03-21"),
+    );
+
+    let output = run_repo(repo.path(), &["--json", "docs", "designs"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let json: Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(json.as_array().map(Vec::len), Some(1));
+}
+
+#[test]
+fn plan_query_shows_only_matching_plan_details() {
+    let repo = TempRepo::new("docs-plan-query");
+    repo.write(
+        ".repo/storage/plan-a.json",
+        r#"{
+          "schemaVersion": "0.3.0",
+          "metadata": {
+            "planId": "plan-a",
+            "version": "1.0.0",
+            "status": "active",
+            "updatedAt": "2026-03-21T12:00:00Z"
+          },
+          "problem": { "successOutcome": "Plan A outcome" },
+          "steps": [{ "id": "a", "title": "A", "size": "S", "validationBudget": { "valReq": 1, "valDone": 0 } }],
+          "executionOrder": { "sequence": ["a"] }
+        }"#,
+    );
+    repo.write(
+        ".repo/storage/plan-b.json",
+        r#"{
+          "schemaVersion": "0.3.0",
+          "metadata": {
+            "planId": "plan-b",
+            "version": "1.0.0",
+            "status": "complete",
+            "updatedAt": "2026-03-20T12:00:00Z"
+          },
+          "problem": { "successOutcome": "Plan B outcome" },
+          "steps": [{ "id": "b", "title": "B", "size": "S", "validationBudget": { "valReq": 1, "valDone": 1 } }],
+          "executionOrder": { "sequence": ["b"] }
+        }"#,
+    );
+
+    let output = run_docs(repo.path(), &["plans", "plan-a"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("plan-a.json"), "expected matching plan in: {text}");
+    assert!(!text.contains("plan-b.json"), "did not expect other plans in: {text}");
+    assert!(text.contains("phases:"), "expected drill-down details in: {text}");
+}
+
+#[test]
+fn incomplete_details_expand_only_incomplete_plans() {
+    let repo = TempRepo::new("docs-plan-details-incomplete");
+    repo.write(
+        ".repo/storage/plan-a.json",
+        r#"{
+          "schemaVersion": "0.3.0",
+          "metadata": {
+            "planId": "plan-a",
+            "version": "1.0.0",
+            "status": "active",
+            "updatedAt": "2026-03-21T12:00:00Z"
+          },
+          "problem": { "successOutcome": "Plan A outcome" },
+          "steps": [{ "id": "a", "title": "A", "size": "S", "validationBudget": { "valReq": 1, "valDone": 0 } }],
+          "executionOrder": { "sequence": ["a"] }
+        }"#,
+    );
+    repo.write(
+        ".repo/storage/plan-b.json",
+        r#"{
+          "schemaVersion": "0.3.0",
+          "metadata": {
+            "planId": "plan-b",
+            "version": "1.0.0",
+            "status": "complete",
+            "updatedAt": "2026-03-20T12:00:00Z"
+          },
+          "problem": { "successOutcome": "Plan B outcome" },
+          "steps": [{ "id": "b", "title": "B", "size": "S", "validationBudget": { "valReq": 1, "valDone": 1 } }],
+          "executionOrder": { "sequence": ["b"] }
+        }"#,
+    );
+
+    let output = run_docs(repo.path(), &["plans", "--details", "incomplete"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("Plan A outcome phases:"), "expected incomplete plan details in: {text}");
+    assert!(!text.contains("Plan B outcome phases:"), "did not expect complete plan details in: {text}");
 }
