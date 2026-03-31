@@ -15,6 +15,12 @@ pub struct Prompt {
     pub builtin: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct PromptInitReport {
+    written: usize,
+    skipped: usize,
+}
+
 // ── Embedded defaults ───────────────────────────────────────────────
 
 struct DefaultPrompt {
@@ -63,19 +69,20 @@ fn load_defaults() -> Vec<Prompt> {
 
 // ── Commands ────────────────────────────────────────────────────────
 
-pub fn run(repo_root: &Path, args: &[&str]) {
+#[must_use]
+pub fn run(repo_root: &Path, args: &[&str]) -> i32 {
     let subcommand = args.first().copied().filter(|a| !a.starts_with('-'));
     let json = args.contains(&"--json");
 
     if args.iter().any(|a| *a == "--help" || *a == "-h") {
         print_help();
-        return;
+        return 0;
     }
 
     let prompts_dir = repo_root.join(".repo").join("prompts");
 
     match subcommand {
-        Some("init") => cmd_init(&prompts_dir),
+        Some("init") => cmd_init(&prompts_dir, json),
         Some("list") | None => cmd_list(&prompts_dir, args, json),
         Some(name) => cmd_show(&prompts_dir, name),
     }
@@ -120,14 +127,15 @@ SNIPPET FORMAT:
 
 // ── init ────────────────────────────────────────────────────────────
 
-fn cmd_init(prompts_dir: &Path) {
+fn cmd_init(prompts_dir: &Path, json: bool) -> i32 {
     if let Err(e) = fs::create_dir_all(prompts_dir) {
         eprintln!("Failed to create {}: {e}", prompts_dir.display());
-        std::process::exit(1);
+        return 1;
     }
 
     let mut written = 0;
     let mut skipped = 0;
+    let mut failed = false;
 
     for d in DEFAULTS {
         let path = prompts_dir.join(d.filename);
@@ -137,9 +145,19 @@ fn cmd_init(prompts_dir: &Path) {
         }
         if let Err(e) = fs::write(&path, d.content) {
             eprintln!("Failed to write {}: {e}", path.display());
+            failed = true;
         } else {
             written += 1;
         }
+    }
+
+    if json {
+        let report = PromptInitReport { written, skipped };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+        );
+        return i32::from(failed);
     }
 
     if written > 0 {
@@ -154,19 +172,21 @@ fn cmd_init(prompts_dir: &Path) {
     if written == 0 && skipped > 0 {
         println!("  All defaults already present. Edit them in .repo/prompts/");
     }
+
+    i32::from(failed)
 }
 
 // ── list ────────────────────────────────────────────────────────────
 
-fn cmd_list(prompts_dir: &Path, args: &[&str], json: bool) {
+fn cmd_list(prompts_dir: &Path, args: &[&str], json: bool) -> i32 {
     let all_prompts = load_merged(prompts_dir);
     if all_prompts.is_empty() {
         if json {
             println!("[]");
-            return;
+            return 0;
         }
         println!("No prompts available.");
-        return;
+        return 0;
     }
 
     let filter = tag_filter(args);
@@ -175,10 +195,10 @@ fn cmd_list(prompts_dir: &Path, args: &[&str], json: bool) {
     if filtered.is_empty() {
         if json {
             println!("[]");
-            return;
+            return 0;
         }
         println!("No prompts match the given filter.");
-        return;
+        return 0;
     }
 
     if json {
@@ -186,16 +206,17 @@ fn cmd_list(prompts_dir: &Path, args: &[&str], json: bool) {
             "{}",
             serde_json::to_string_pretty(&filtered).unwrap_or_else(|_| "[]".to_string())
         );
-        return;
+        return 0;
     }
 
     let refs = filtered.iter().collect::<Vec<_>>();
     print_table(&refs);
+    0
 }
 
 // ── show ────────────────────────────────────────────────────────────
 
-fn cmd_show(prompts_dir: &Path, name: &str) {
+fn cmd_show(prompts_dir: &Path, name: &str) -> i32 {
     let prompts = load_merged(prompts_dir);
 
     // Match by name (exact), then by prefix.
@@ -206,6 +227,7 @@ fn cmd_show(prompts_dir: &Path, name: &str) {
 
     if let Some(prompt) = found {
         println!("{}", prompt.body);
+        0
     } else {
         eprintln!("Unknown prompt: {name}");
         eprintln!();
@@ -224,7 +246,7 @@ fn cmd_show(prompts_dir: &Path, name: &str) {
                 eprintln!("  {s}");
             }
         }
-        std::process::exit(1);
+        1
     }
 }
 

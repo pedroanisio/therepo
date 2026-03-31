@@ -2,7 +2,7 @@
 set -eu
 
 CRATE_MANIFEST="crates/repo-cli/Cargo.toml"
-MIN_LINE_COVERAGE="${MIN_LINE_COVERAGE:-75}"
+MIN_LINE_COVERAGE="${MIN_LINE_COVERAGE:-91}"
 
 cargo llvm-cov \
   --manifest-path "$CRATE_MANIFEST" \

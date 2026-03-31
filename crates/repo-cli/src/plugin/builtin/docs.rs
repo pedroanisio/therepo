@@ -124,7 +124,7 @@ pub const ALL_KINDS: [DocKind; 4] = [
 
 // ── Commands ────────────────────────────────────────────────────────
 
-pub fn run(repo_root: &Path, args: &[&str]) {
+pub fn run(repo_root: &Path, args: &[&str]) -> i32 {
     let subcommand = args.iter().copied().find(|arg| !arg.starts_with('-'));
     let json_output = args.contains(&"--json");
 
@@ -134,26 +134,26 @@ pub fn run(repo_root: &Path, args: &[&str]) {
         } else {
             print_help();
         }
-        return;
+        return 0;
     }
 
-    match subcommand {
-        Some(sub) => {
-            if let Some(kind) = DocKind::parse(sub) {
-                let remaining: Vec<&str> = args
-                    .iter()
-                    .copied()
-                    .skip_while(|arg| *arg != sub)
-                    .skip(1)
-                    .collect();
-                list_kind(repo_root, kind, &remaining);
-            } else {
-                eprintln!("Unknown docs subcommand: {sub}");
-                eprintln!("Run `repo docs --help` for usage.");
-                std::process::exit(1);
-            }
+    if let Some(sub) = subcommand {
+        if let Some(kind) = DocKind::parse(sub) {
+            let remaining: Vec<&str> = args
+                .iter()
+                .copied()
+                .skip_while(|arg| *arg != sub)
+                .skip(1)
+                .collect();
+            list_kind(repo_root, kind, &remaining)
+        } else {
+            eprintln!("Unknown docs subcommand: {sub}");
+            eprintln!("Run `repo docs --help` for usage.");
+            1
         }
-        None => list_all(repo_root, json_output),
+    } else {
+        list_all(repo_root, json_output);
+        0
     }
 }
 
@@ -269,12 +269,12 @@ pub fn list_all(repo_root: &Path, json_output: bool) {
     );
 }
 
-fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) {
+fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) -> i32 {
     let docs = match resolve_docs(repo_root, kind) {
         Ok(docs) => docs,
         Err(e) => {
             eprintln!("Error scanning {}: {e}", kind.subdir());
-            std::process::exit(1);
+            return 1;
         }
     };
 
@@ -282,7 +282,7 @@ fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) {
         Ok(options) => options,
         Err(message) => {
             eprintln!("{message}");
-            std::process::exit(1);
+            return 1;
         }
     };
 
@@ -292,7 +292,7 @@ fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) {
             _ => format!("_docs/{}/", kind.subdir()),
         };
         println!("No {}s found in {}", kind.label(), location);
-        return;
+        return 0;
     }
 
     let mut filtered: Vec<&Doc> = docs
@@ -314,11 +314,17 @@ fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) {
         } else {
             eprintln!("No {} matched `{query}`.", kind.label());
             eprintln!("Run `repo docs {} --help` for usage.", kind.subdir());
-            std::process::exit(1);
+            return 1;
         }
     } else if options.interactive {
-        let Some(doc) = pick_doc_interactively(kind, &filtered) else {
-            return;
+        let Some(doc) = (match pick_doc_interactively(kind, &filtered) {
+            Ok(doc) => doc,
+            Err(message) => {
+                eprintln!("{message}");
+                return 1;
+            }
+        }) else {
+            return 0;
         };
         filtered = vec![doc];
     }
@@ -330,15 +336,20 @@ fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) {
     if filtered.is_empty() {
         if options.json_output {
             println!("[]");
-            return;
+            return 0;
         }
         println!("No {}s match the given filter.", kind.label());
-        return;
+        return 0;
     }
 
     if options.json_output {
-        print_json(&filtered);
-        return;
+        return match print_json(&filtered) {
+            Ok(()) => 0,
+            Err(message) => {
+                eprintln!("{message}");
+                1
+            }
+        };
     }
 
     let details = if options.query.is_some() || options.interactive {
@@ -348,6 +359,7 @@ fn list_kind(repo_root: &Path, kind: DocKind, args: &[&str]) {
     };
 
     print_table(kind, &filtered, details);
+    0
 }
 
 fn parse_list_options(args: &[&str]) -> Result<ListOptions, String> {
@@ -469,10 +481,9 @@ fn find_doc<'a>(docs: &[&'a Doc], query: &str) -> Option<&'a Doc> {
         })
 }
 
-fn pick_doc_interactively<'a>(kind: DocKind, docs: &[&'a Doc]) -> Option<&'a Doc> {
+fn pick_doc_interactively<'a>(kind: DocKind, docs: &[&'a Doc]) -> Result<Option<&'a Doc>, String> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
-        eprintln!("`--interactive` requires a TTY.");
-        std::process::exit(1);
+        return Err("`--interactive` requires a TTY.".into());
     }
 
     println!("{}", bold(&format!("Select a {}:", kind.label())));
@@ -489,13 +500,12 @@ fn pick_doc_interactively<'a>(kind: DocKind, docs: &[&'a Doc]) -> Option<&'a Doc
 
     let mut input = String::new();
     if io::stdin().read_line(&mut input).is_err() {
-        eprintln!("Failed to read selection.");
-        std::process::exit(1);
+        return Err("Failed to read selection.".into());
     }
 
     let trimmed = input.trim();
     if trimmed.is_empty() {
-        return None;
+        return Ok(None);
     }
 
     let choice = trimmed
@@ -503,10 +513,9 @@ fn pick_doc_interactively<'a>(kind: DocKind, docs: &[&'a Doc]) -> Option<&'a Doc
         .ok()
         .and_then(|index| docs.get(index.saturating_sub(1)).copied());
     if choice.is_none() {
-        eprintln!("Invalid selection: {trimmed}");
-        std::process::exit(1);
+        return Err(format!("Invalid selection: {trimmed}"));
     }
-    choice
+    Ok(choice)
 }
 
 fn should_expand_doc(details: DetailsMode, doc: &Doc) -> bool {
@@ -886,14 +895,14 @@ fn extract_json_phases(obj: &serde_json::Map<String, serde_json::Value>) -> Vec<
     phases
 }
 
-fn print_json(docs: &[&Doc]) {
+fn print_json(docs: &[&Doc]) -> Result<(), String> {
     let payload: Vec<JsonDoc<'_>> = docs.iter().map(|doc| to_json_doc(doc)).collect();
     match serde_json::to_string_pretty(&payload) {
-        Ok(json) => println!("{json}"),
-        Err(err) => {
-            eprintln!("Failed to serialize docs as JSON: {err}");
-            std::process::exit(1);
+        Ok(json) => {
+            println!("{json}");
+            Ok(())
         }
+        Err(err) => Err(format!("Failed to serialize docs as JSON: {err}")),
     }
 }
 

@@ -71,7 +71,9 @@ impl Drop for Spinner {
 }
 
 fn is_enabled() -> bool {
-    std::io::stderr().is_terminal() && std::env::var_os("TERM") != Some("dumb".into())
+    !crate::output::is_plain_output()
+        && std::io::stderr().is_terminal()
+        && std::env::var_os("TERM") != Some("dumb".into())
 }
 
 #[cfg(test)]
@@ -82,5 +84,94 @@ mod tests {
     fn spinner_start_is_safe_when_output_is_not_a_tty() {
         let mut spinner = Spinner::start("checking");
         spinner.finish("done");
+    }
+
+    #[test]
+    fn is_enabled_returns_false_outside_terminal() {
+        assert!(!is_enabled());
+    }
+
+    #[test]
+    fn finish_without_state_is_noop() {
+        let mut spinner = Spinner {
+            state: None,
+            message: String::from("noop"),
+        };
+        spinner.finish("ignored");
+        // no panic, nothing happens
+    }
+
+    #[test]
+    fn finish_with_state_and_nonempty_status() {
+        let done = Arc::new(AtomicBool::new(false));
+        let done_flag = Arc::clone(&done);
+        let handle = thread::spawn(move || {
+            while !done_flag.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(10));
+            }
+        });
+
+        let mut spinner = Spinner {
+            state: Some(SpinnerState { done, handle }),
+            message: String::from("working"),
+        };
+        spinner.finish("complete");
+        assert!(spinner.state.is_none());
+    }
+
+    #[test]
+    fn finish_with_state_and_empty_status_clears_line() {
+        let done = Arc::new(AtomicBool::new(false));
+        let done_flag = Arc::clone(&done);
+        let handle = thread::spawn(move || {
+            while !done_flag.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(10));
+            }
+        });
+
+        let mut spinner = Spinner {
+            state: Some(SpinnerState { done, handle }),
+            message: String::from("loading"),
+        };
+        spinner.finish("");
+        assert!(spinner.state.is_none());
+    }
+
+    #[test]
+    fn drop_stops_spinner_thread() {
+        let done = Arc::new(AtomicBool::new(false));
+        let done_flag = Arc::clone(&done);
+        let done_check = Arc::clone(&done);
+        let handle = thread::spawn(move || {
+            while !done_flag.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(10));
+            }
+        });
+
+        let spinner = Spinner {
+            state: Some(SpinnerState { done, handle }),
+            message: String::from("dropping"),
+        };
+        drop(spinner);
+        assert!(done_check.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn double_finish_is_safe() {
+        let done = Arc::new(AtomicBool::new(false));
+        let done_flag = Arc::clone(&done);
+        let handle = thread::spawn(move || {
+            while !done_flag.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(10));
+            }
+        });
+
+        let mut spinner = Spinner {
+            state: Some(SpinnerState { done, handle }),
+            message: String::from("twice"),
+        };
+        spinner.finish("first");
+        spinner.finish("second");
+        assert!(spinner.state.is_none());
     }
 }

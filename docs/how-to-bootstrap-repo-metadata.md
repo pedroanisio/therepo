@@ -37,7 +37,7 @@ Existing files are not overwritten.
 repo skills deploy
 ```
 
-This writes all 10 built-in skills into `~/.agents/skills/` and creates symlinks
+This writes all 12 built-in skills into `~/.agents/skills/` and creates symlinks
 for every detected AI agent (Claude Code, Codex, etc.) so they are immediately
 available without an external registry. Safe to re-run; use `--force` to update
 after upgrading the `repo` binary.

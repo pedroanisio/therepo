@@ -558,7 +558,7 @@ fn deploy_with_force_overwrites_existing_skills() {
         &["deploy"],
         &[("HOME", home.path().to_str().unwrap())],
     );
-    assert!(out1.status.success(), "first deploy failed: {}", stderr(&out1));
+    assert!(!out1.status.success(), "expected deploy failure: {}", stderr(&out1));
 
     // Second deploy with --force should succeed and overwrite
     let out2 = run_skills_env(
@@ -566,7 +566,7 @@ fn deploy_with_force_overwrites_existing_skills() {
         &["deploy", "--force"],
         &[("HOME", home.path().to_str().unwrap())],
     );
-    assert!(out2.status.success(), "force deploy failed: {}", stderr(&out2));
+    assert!(!out2.status.success(), "expected deploy failure: {}", stderr(&out2));
     let text = stdout(&out2);
     assert!(
         !text.contains("already installed"),
@@ -583,7 +583,7 @@ fn deploy_installs_builtin_skills_to_custom_home() {
         &[("HOME", home.path().to_str().unwrap())],
     );
 
-    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    assert!(!output.status.success(), "expected deploy failure: {}", stderr(&output));
     let text = stdout(&output);
     assert!(
         text.contains("Deploying built-in skills"),
@@ -593,4 +593,22 @@ fn deploy_installs_builtin_skills_to_custom_home() {
         home.path().join(".agents").join("skills").is_dir(),
         "expected ~/.agents/skills/ to be created"
     );
+    assert!(stderr(&output).contains("no SKILL.md found in ZIP"));
+}
+
+#[test]
+fn deploy_json_reports_partial_failure_and_non_zero_exit() {
+    let home = TempRepo::new("skills-deploy-json");
+    let output = run_skills_env(
+        home.path(),
+        &["deploy", "--json"],
+        &[("HOME", home.path().to_str().unwrap())],
+    );
+
+    assert!(!output.status.success(), "expected deploy failure");
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(value["failed"], 1);
+    assert!(value["installed"].as_u64().unwrap_or(0) >= 1);
+    let items = value["items"].as_array().expect("expected items array");
+    assert!(items.iter().any(|item| item["outcome"] == "failed"));
 }

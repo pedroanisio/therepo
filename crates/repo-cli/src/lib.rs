@@ -20,7 +20,7 @@ pub fn run_cli(args: &[String]) -> i32 {
     };
 
     if cli.plain {
-        output::disable_color();
+        output::enable_plain_output();
     }
 
     let json = cli.json;
@@ -30,11 +30,25 @@ pub fn run_cli(args: &[String]) -> i32 {
         Some(Commands::Health(cmd)) => commands::health::run(&cmd, json),
         Some(Commands::Skills(cmd)) => commands::skills::run(cmd, json),
         Some(Commands::Prompt(cmd)) => commands::prompt::run(cmd, json),
-        Some(Commands::Ulid(cmd)) => commands::ulid::run(&cmd),
+        Some(Commands::Ulid(cmd)) => commands::ulid::run(&cmd, json),
         Some(Commands::Plugins(cmd)) => commands::plugins::run(cmd, json),
         Some(Commands::Completions(cmd)) => {
             let mut command = Cli::command();
-            generate(cmd.shell, &mut command, "repo", &mut std::io::stdout());
+            let mut buffer = Vec::new();
+            generate(cmd.shell, &mut command, "repo", &mut buffer);
+            let script = String::from_utf8_lossy(&buffer).into_owned();
+
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "shell": cmd.shell.to_string(),
+                        "script": script,
+                    })
+                );
+            } else {
+                print!("{script}");
+            }
             0
         }
         Some(Commands::External(args)) => commands::external::run(&args),

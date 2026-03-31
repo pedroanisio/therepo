@@ -86,6 +86,19 @@ fn prompt_init_writes_defaults_and_list_reports_builtins() {
 }
 
 #[test]
+fn prompt_init_json_emits_machine_readable_report() {
+    let repo_root = temp_repo("prompt-init-json");
+    let output = run_repo(&repo_root, &["prompt", "init", "--json"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(value["written"], 6);
+    assert_eq!(value["skipped"], 0);
+
+    cleanup(repo_root);
+}
+
+#[test]
 fn prompt_custom_prompt_overrides_builtin_body() {
     let repo_root = temp_repo("prompt-override");
     let prompts_dir = repo_root.join(".repo").join("prompts");
@@ -188,6 +201,20 @@ fn ulid_count_generates_requested_number_of_ulids() {
     let lines = ulid_lines(&output);
     assert_eq!(lines.len(), 3);
     assert!(lines.iter().all(|line| line.len() == 26));
+
+    cleanup(repo_root);
+}
+
+#[test]
+fn ulid_json_emits_machine_readable_values() {
+    let repo_root = temp_repo("ulid-json");
+    let output = run_repo(&repo_root, &["ulid", "-n", "2", "--json"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    let values = value.as_array().expect("expected JSON array");
+    assert_eq!(values.len(), 2);
+    assert!(values.iter().all(|item| item.as_str().is_some_and(|ulid| ulid.len() == 26)));
 
     cleanup(repo_root);
 }

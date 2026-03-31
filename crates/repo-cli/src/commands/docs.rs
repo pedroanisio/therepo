@@ -21,8 +21,7 @@ pub fn run(cmd: DocsArgs, json: bool) -> i32 {
     };
 
     let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-    plugin::builtin::docs::run(&repo_root, &refs);
-    0
+    plugin::builtin::docs::run(&repo_root, &refs)
 }
 
 fn list_args(name: &str, flags: DocsListArgs, global_json: bool) -> Vec<String> {

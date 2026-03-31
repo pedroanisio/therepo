@@ -1,21 +1,34 @@
 use crate::output::bold;
 use std::path::Path;
 
-pub fn run(_repo_root: &Path, args: &[&str]) {
+#[must_use]
+pub fn run(_repo_root: &Path, args: &[&str]) -> i32 {
     if args.iter().any(|a| *a == "--help" || *a == "-h") {
         print_help();
-        return;
+        return 0;
     }
 
+    let json = args.contains(&"--json");
     let count = parse_count(args);
     if count == 0 {
         eprintln!("Error: count must be greater than zero.");
-        std::process::exit(1);
+        return 1;
     }
 
-    for _ in 0..count {
-        println!("{}", ulid::Ulid::new());
+    let values: Vec<String> = (0..count).map(|_| ulid::Ulid::new().to_string()).collect();
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&values).unwrap_or_else(|_| "[]".to_string())
+        );
+    } else {
+        for value in values {
+            println!("{value}");
+        }
     }
+
+    0
 }
 
 fn parse_count(args: &[&str]) -> usize {

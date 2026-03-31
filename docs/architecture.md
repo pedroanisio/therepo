@@ -18,15 +18,31 @@ The crate compiles one executable:
 
 ## Entry Point
 
-The binary entry point is `crates/repo-cli/src/main.rs`.
+The binary entry point is `crates/repo-cli/src/main.rs`, which calls into `lib.rs`.
 
-It is responsible for:
+### `lib.rs`
+
+The library root. Parses CLI arguments via clap and dispatches to the appropriate command handler. It is responsible for:
 
 - parsing top-level arguments
-- locating the repository root
-- ensuring `.repo/storage/` exists
-- dispatching built-in subcommands
+- honoring `--plain` and `--json` global flags
+- dispatching built-in subcommands through the `commands/` layer
 - attempting to match external plugin commands
+
+## Command Dispatch Layer (`commands/`)
+
+Thin handlers that sit between CLI argument parsing and the built-in plugin implementations. Each file receives parsed clap arguments and delegates to the corresponding `plugin::builtin::*` module.
+
+| File | Dispatches to |
+|------|---------------|
+| `commands/docs.rs` | `plugin::builtin::docs` |
+| `commands/health.rs` | `plugin::builtin::health` |
+| `commands/skills.rs` | `plugin::builtin::skills` |
+| `commands/prompt.rs` | `plugin::builtin::prompt` |
+| `commands/ulid.rs` | `plugin::builtin::ulid` |
+| `commands/plugins.rs` | Plugin discovery and listing |
+| `commands/overview.rs` | Repository overview (default, no subcommand) |
+| `commands/external.rs` | External plugin dispatch attempt |
 
 ## Core Support Modules
 
@@ -37,6 +53,10 @@ Loads `.repo/config.toml` into a small `RepoConfig` model and provides repositor
 ### `output.rs`
 
 Provides lightweight ANSI formatting helpers and honors `NO_COLOR`.
+
+### `progress.rs`
+
+Terminal spinner/progress indicator. Animates in TTY contexts, no-ops otherwise.
 
 ### `plugin/`
 
@@ -102,6 +122,8 @@ The crate embeds default files with `include_str!` from:
 - `crates/repo-cli/defaults/schemas/`
 - `crates/repo-cli/defaults/traits/`
 - `crates/repo-cli/defaults/templates/`
+- `crates/repo-cli/defaults/examples/`
+- `crates/repo-cli/defaults/scripts/`
 
 These defaults are copied into `.repo/` by the relevant commands when needed.
 

@@ -1,5 +1,12 @@
 # repo
 
+## Disclaimer
+
+This work is subject to the methodological caveats and commitments described in [@DISCLAIMER.md](../../DISCLAIMER.md).
+> No statement or premise not backed by a real logical definition or verifiable reference should be taken for granted.
+
+## Overview
+
 A general-purpose repository maintenance CLI with a plugin system.
 
 `repo` gives you a single entry point for browsing documentation, checking
@@ -119,7 +126,7 @@ repo skills install           # Install missing skills via npx skills add
 
 | Directory | Contents |
 |-----------|----------|
-| `.repo/skills/` | Built-in skill definitions (tsdoc-voice, mental-model, adv-plan, purpose-md, testing-standards) |
+| `.repo/skills/` | Built-in skill definitions (12 skills: tsdoc-voice, mental-model, adv-planning, purpose-md, testing-standards, incremental-validation, review-plan, prompt-builder, behavioral-layer, doc-hygiene, cli-ux-patterns, codebase-requirements) |
 | `.repo/references/` | Reference documents (tsdoc-spec, mental-model-schema, plan-schema-fields) |
 | `.repo/schemas/` | Formal schemas (plan-schema.ts) |
 

@@ -3,6 +3,7 @@ use std::sync::OnceLock;
 
 static COLOR_ENABLED: OnceLock<bool> = OnceLock::new();
 static COLOR_OVERRIDE: OnceLock<bool> = OnceLock::new();
+static PLAIN_OUTPUT: OnceLock<bool> = OnceLock::new();
 
 /// Whether stdout supports color output.
 ///
@@ -20,6 +21,16 @@ pub fn use_color() -> bool {
 
 pub fn disable_color() {
     let _ = COLOR_OVERRIDE.set(false);
+}
+
+pub fn enable_plain_output() {
+    let _ = PLAIN_OUTPUT.set(true);
+    disable_color();
+}
+
+#[must_use]
+pub fn is_plain_output() -> bool {
+    PLAIN_OUTPUT.get().copied().unwrap_or(false)
 }
 
 #[must_use]

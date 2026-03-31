@@ -8,7 +8,7 @@
 //! ```toml
 //! [plugin]
 //! name = "my-linter"
-//! version = "0.2.0"
+//! version = "0.3.0"
 //! description = "Run custom lint checks"
 //! provides = ["command", "validation"]
 //!
@@ -123,7 +123,7 @@ mod tests {
                 concat!(
                     "[plugin]\n",
                     "name = \"my-linter\"\n",
-                    "version = \"0.2.0\"\n",
+                    "version = \"0.3.0\"\n",
                     "description = \"Run custom lint checks\"\n",
                     "command_path = \"bin/my-linter\"\n",
                     "provides = [\"command\", \"validation\"]\n\n",
@@ -143,7 +143,7 @@ mod tests {
             let manifest = load(&path).expect("expected manifest to parse");
 
             assert_eq!(manifest.plugin.name, "my-linter");
-            assert_eq!(manifest.plugin.version, "0.2.0");
+            assert_eq!(manifest.plugin.version, "0.3.0");
             assert_eq!(manifest.plugin.description, "Run custom lint checks");
             assert_eq!(manifest.plugin.command_path.as_deref(), Some("bin/my-linter"));
             assert_eq!(manifest.plugin.provides, ["command", "validation"]);

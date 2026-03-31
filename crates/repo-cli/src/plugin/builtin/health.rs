@@ -27,9 +27,22 @@ struct HealthCheckRecord {
     recommendation: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct HealthInitReport<'a> {
+    path: &'a str,
+    created: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct HealthExportReport<'a> {
+    path: &'a str,
+    content: &'a str,
+}
+
 // ── Public entry point ──────────────────────────────────────────────
 
-pub fn run(repo_root: &Path, args: &[&str]) {
+#[must_use]
+pub fn run(repo_root: &Path, args: &[&str]) -> i32 {
     let subcommand = args.first().copied().filter(|a| !a.starts_with('-'));
     let json = args.contains(&"--json");
 
@@ -37,48 +50,74 @@ pub fn run(repo_root: &Path, args: &[&str]) {
         if subcommand.is_none() {
             print_help();
         }
-        return;
+        return 0;
     }
 
     match subcommand {
-        Some("init") => cmd_init(repo_root),
-        Some("export") => cmd_export(repo_root),
+        Some("init") => cmd_init(repo_root, json),
+        Some("export") => cmd_export(repo_root, json),
         Some(other) => {
             eprintln!("Unknown health subcommand: {other}");
             eprintln!("Run `repo health --help` for usage.");
+            1
         }
         None => {
             let verbose = args.iter().any(|a| *a == "--verbose" || *a == "-v");
             let check_updates = args.iter().any(|a| *a == "--check-updates" || *a == "-u");
-            cmd_check(repo_root, verbose, check_updates, json);
+            cmd_check(repo_root, verbose, check_updates, json)
         }
     }
 }
 
 // ── init: write blank template ──────────────────────────────────────
 
-fn cmd_init(repo_root: &Path) {
+fn cmd_init(repo_root: &Path, json: bool) -> i32 {
     let path = repo_root.join(".repo").join("health.toml");
     if path.exists() {
-        eprintln!("  {} .repo/health.toml already exists", yellow("!!"));
-        eprintln!("  Use `repo health export` to overwrite with current state,");
-        eprintln!("  or edit the file directly.");
-        return;
+        if json {
+            let path_str = path.to_string_lossy().into_owned();
+            let report = HealthInitReport {
+                path: &path_str,
+                created: false,
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+            );
+        } else {
+            eprintln!("  {} .repo/health.toml already exists", yellow("!!"));
+            eprintln!("  Use `repo health export` to overwrite with current state,");
+            eprintln!("  or edit the file directly.");
+        }
+        return 0;
     }
 
     let template = health_config::blank_template();
     if let Err(e) = std::fs::write(&path, template) {
         eprintln!("Error writing {}: {e}", path.display());
-        std::process::exit(1);
+        return 1;
     }
 
-    println!("  {} wrote .repo/health.toml", green("ok"));
-    println!("  Edit the file to specify required tools and versions.");
+    if json {
+        let path_str = path.to_string_lossy().into_owned();
+        let report = HealthInitReport {
+            path: &path_str,
+            created: true,
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+        );
+    } else {
+        println!("  {} wrote .repo/health.toml", green("ok"));
+        println!("  Edit the file to specify required tools and versions.");
+    }
+    0
 }
 
 // ── export: snapshot current env ────────────────────────────────────
 
-fn cmd_export(repo_root: &Path) {
+fn cmd_export(repo_root: &Path, json: bool) -> i32 {
     let checks = default_checks();
     let mut found: Vec<(String, Option<String>)> = Vec::new();
 
@@ -105,17 +144,30 @@ fn cmd_export(repo_root: &Path) {
 
     if let Err(e) = std::fs::write(&path, &content) {
         eprintln!("Error writing {}: {e}", path.display());
-        std::process::exit(1);
+        return 1;
     }
 
-    println!("  {} wrote .repo/health.toml", green("ok"));
-    println!();
-    print!("{content}");
+    if json {
+        let path_str = path.to_string_lossy().into_owned();
+        let report = HealthExportReport {
+            path: &path_str,
+            content: &content,
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+        );
+    } else {
+        println!("  {} wrote .repo/health.toml", green("ok"));
+        println!();
+        print!("{content}");
+    }
+    0
 }
 
 // ── check: main health check ────────────────────────────────────────
 
-fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool, json: bool) {
+fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool, json: bool) -> i32 {
     let report = build_report(repo_root, verbose, check_updates);
 
     if json {
@@ -127,9 +179,7 @@ fn cmd_check(repo_root: &Path, verbose: bool, check_updates: bool, json: bool) {
         print_report(&report);
     }
 
-    if report.errors > 0 {
-        std::process::exit(1);
-    }
+    i32::from(report.errors > 0)
 }
 
 #[expect(clippy::too_many_lines)]

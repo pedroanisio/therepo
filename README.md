@@ -1,5 +1,12 @@
 # repo
 
+## Disclaimer
+
+This work is subject to the methodological caveats and commitments described in [@DISCLAIMER.md](./DISCLAIMER.md).
+> No statement or premise not backed by a real logical definition or verifiable reference should be taken for granted.
+
+## Overview
+
 `repo` is a Rust CLI for repository maintenance workflows.
 
 The source code for the binary lives in [`crates/repo-cli/`](./crates/repo-cli/), but the intended usage model is simple:
@@ -51,7 +58,7 @@ Requires [`cargo llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov).
 ./scripts/check-coverage.sh
 ```
 
-This prints a summary and fails if line coverage drops below the threshold (default `75`; CI and the pre-push hook enforce `91`). To raise the bar locally:
+This prints a summary and fails if line coverage drops below the threshold (default `91`, matching the ADR policy). To override locally:
 
 ```bash
 MIN_LINE_COVERAGE=91 ./scripts/check-coverage.sh
@@ -132,11 +139,23 @@ The crate-specific README remains at [`crates/repo-cli/README.md`](./crates/repo
 ├── crates/
 │   └── repo-cli/
 │       ├── src/
+│       ├── tests/
 │       └── defaults/
+├── _docs/
+│   └── adrs/
 ├── docs/
-├── CONTRIBUTING.md
+├── scripts/
+├── .github/
+│   └── workflows/
+├── .githooks/
 ├── CHANGELOG.md
-└── README.md
+├── CLAUDE.md
+├── CONTRIBUTING.md
+├── DISCLAIMER.md
+├── LICENSE-APACHE
+├── LICENSE-MIT
+├── README.md
+└── dist-workspace.toml
 ```
 
 ## Development Notes

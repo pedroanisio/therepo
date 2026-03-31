@@ -7,7 +7,13 @@ pub fn run(cmd: PromptArgs, json: bool) -> i32 {
     super::overview::ensure_repo_dirs(&repo_root);
 
     let args = match cmd.command {
-        Some(PromptCommand::Init) => vec!["init".to_string()],
+        Some(PromptCommand::Init) => {
+            let mut args = vec!["init".to_string()];
+            if json {
+                args.push("--json".to_string());
+            }
+            args
+        }
         Some(PromptCommand::List(flags)) => prompt_list_args(flags, json),
         Some(PromptCommand::Show(values)) => values,
         None => {
@@ -22,8 +28,7 @@ pub fn run(cmd: PromptArgs, json: bool) -> i32 {
     };
 
     let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-    plugin::builtin::prompt::run(&repo_root, &refs);
-    0
+    plugin::builtin::prompt::run(&repo_root, &refs)
 }
 
 fn prompt_list_args(flags: PromptListArgs, json: bool) -> Vec<String> {

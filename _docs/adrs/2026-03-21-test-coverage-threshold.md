@@ -56,17 +56,20 @@ The repository measures coverage with `cargo llvm-cov` using a repo-managed scri
 ./scripts/check-coverage.sh
 ```
 
-That script currently enforces line coverage with:
+That script enforces line coverage via an environment variable with a default of 91:
 
 ```bash
+MIN_LINE_COVERAGE="${MIN_LINE_COVERAGE:-91}"
+
 cargo llvm-cov \
   --manifest-path crates/repo-cli/Cargo.toml \
   --all-features \
   --workspace \
-  --fail-under-lines 91 \
+  --fail-under-lines "$MIN_LINE_COVERAGE" \
   --summary-only
 ```
 
-The command is enforced in CI and by the repository-managed `pre-push` hook.
+The script is enforced in CI and by the repository-managed `pre-push` hook.
+To temporarily lower the bar locally: `MIN_LINE_COVERAGE=80 ./scripts/check-coverage.sh`.
 
 Coverage policy should focus on meaningful exercised behavior, not just line-count inflation.

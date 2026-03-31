@@ -119,6 +119,19 @@ fn plugins_json_lists_discovered_plugins() {
 }
 
 #[test]
+fn completions_json_emits_machine_readable_script() {
+    let repo_root = temp_repo("completions-json");
+    let output = run_repo(&repo_root, &["completions", "zsh", "--json"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(value["shell"], "zsh");
+    assert!(value["script"].as_str().unwrap_or_default().contains("#compdef repo"));
+
+    std::fs::remove_dir_all(repo_root).ok();
+}
+
+#[test]
 fn unknown_command_returns_non_zero_with_guidance() {
     let repo_root = temp_repo("unknown");
     let output = run_repo(&repo_root, &["does-not-exist"]);

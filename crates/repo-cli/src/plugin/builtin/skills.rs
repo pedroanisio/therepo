@@ -476,6 +476,21 @@ struct SkillsFixReport {
 }
 
 #[derive(Debug, Serialize)]
+struct SkillsDeployItem {
+    name: String,
+    outcome: String,
+    message: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SkillsDeployReport {
+    installed: u32,
+    skipped: u32,
+    failed: u32,
+    items: Vec<SkillsDeployItem>,
+}
+
+#[derive(Debug, Serialize)]
 struct RemovedSkill {
     name: String,
     reason: String,
@@ -512,25 +527,27 @@ impl SkillsConfig {
 
 // ── Public entry point ──────────────────────────────────────────────
 
-pub fn run(repo_root: &Path, args: &[&str]) {
+#[must_use]
+pub fn run(repo_root: &Path, args: &[&str]) -> i32 {
     let subcommand = args.first().copied().filter(|a| !a.starts_with('-'));
     let json = args.contains(&"--json");
 
     if args.iter().any(|a| *a == "--help" || *a == "-h") {
         print_help();
-        return;
+        return 0;
     }
 
     match subcommand {
-        Some("init")   => cmd_init(repo_root),
+        Some("init") => cmd_init(repo_root),
         Some("export") => cmd_export(repo_root, json),
-        Some("sync")   => cmd_sync(repo_root, json),
+        Some("sync") => cmd_sync(repo_root, json),
         Some("install") => cmd_install(repo_root, json),
-        Some("fix")    => cmd_fix(repo_root, json),
+        Some("fix") => cmd_fix(repo_root, json),
         Some("deploy") => cmd_deploy(args),
         Some(other) => {
             eprintln!("Unknown skills subcommand: {other}");
             eprintln!("Run `repo skills --help` for usage.");
+            1
         }
         None => cmd_check(repo_root, json),
     }
@@ -577,7 +594,7 @@ agent. No external registry required — the skill content is embedded in the bi
 
 // ── init ────────────────────────────────────────────────────────────
 
-fn cmd_init(repo_root: &Path) {
+fn cmd_init(repo_root: &Path) -> i32 {
     let repo_dir = repo_root.join(".repo");
 
     // 1. Write skills.toml template.
@@ -588,7 +605,7 @@ fn cmd_init(repo_root: &Path) {
         let template = include_str!("../../../defaults/skills.toml");
         if let Err(e) = std::fs::write(&toml_path, template) {
             eprintln!("Error writing {}: {e}", toml_path.display());
-            std::process::exit(1);
+            return 1;
         }
         println!("  {} wrote .repo/skills.toml", green("ok"));
     }
@@ -604,7 +621,7 @@ fn cmd_init(repo_root: &Path) {
         let dir = repo_dir.join(dir_name);
         if let Err(e) = std::fs::create_dir_all(&dir) {
             eprintln!("Failed to create {}: {e}", dir.display());
-            std::process::exit(1);
+            return 1;
         }
 
         let mut written = 0u32;
@@ -638,11 +655,12 @@ fn cmd_init(repo_root: &Path) {
     println!();
     println!("  Edit .repo/skills.toml to declare required external skills.");
     println!("  Built-in skills, references, and schemas are ready to use.");
+    0
 }
 
 // ── export ──────────────────────────────────────────────────────────
 
-fn cmd_export(repo_root: &Path, json: bool) {
+fn cmd_export(repo_root: &Path, json: bool) -> i32 {
     let installed = scan_installed_skills(repo_root);
 
     if installed.is_empty() {
@@ -655,10 +673,10 @@ fn cmd_export(repo_root: &Path, json: bool) {
                 "{}",
                 serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
             );
-            return;
+            return 0;
         }
         println!("  No skills found in .agents/skills/");
-        return;
+        return 0;
     }
 
     let config = SkillsConfig { skills: installed };
@@ -674,7 +692,7 @@ fn cmd_export(repo_root: &Path, json: bool) {
 
     if let Err(e) = std::fs::write(&path, &content) {
         eprintln!("Error writing {}: {e}", path.display());
-        std::process::exit(1);
+        return 1;
     }
 
     if json {
@@ -686,7 +704,7 @@ fn cmd_export(repo_root: &Path, json: bool) {
             "{}",
             serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
         );
-        return;
+        return 0;
     }
 
     println!("  {} wrote .repo/skills.toml", green("ok"));
@@ -703,12 +721,13 @@ fn cmd_export(repo_root: &Path, json: bool) {
 
     println!();
     println!("  {} skill(s) exported", config.skills.len());
+    0
 }
 
 // ── sync ────────────────────────────────────────────────────────
 
 #[expect(clippy::too_many_lines)]
-fn cmd_sync(repo_root: &Path, json: bool) {
+fn cmd_sync(repo_root: &Path, json: bool) -> i32 {
     let installed = scan_installed_skills(repo_root);
     let existing = SkillsConfig::load(repo_root);
 
@@ -836,7 +855,7 @@ fn cmd_sync(repo_root: &Path, json: bool) {
 
     if let Err(e) = std::fs::write(&path, &content) {
         eprintln!("Error writing {}: {e}", path.display());
-        std::process::exit(1);
+        return 1;
     }
 
     if let Some(report) = json_report {
@@ -844,7 +863,7 @@ fn cmd_sync(repo_root: &Path, json: bool) {
             "{}",
             serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
         );
-        return;
+        return 0;
     }
 
     if !json {
@@ -879,12 +898,13 @@ fn cmd_sync(repo_root: &Path, json: bool) {
             }
         }
     }
+    0
 }
 
 // ── check ───────────────────────────────────────────────────────────
 
 #[expect(clippy::too_many_lines)]
-fn cmd_check(repo_root: &Path, json: bool) {
+fn cmd_check(repo_root: &Path, json: bool) -> i32 {
     let Some(config) = SkillsConfig::load(repo_root) else {
         if json {
             let report = JsonError {
@@ -894,12 +914,12 @@ fn cmd_check(repo_root: &Path, json: bool) {
                 "{}",
                 serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
             );
-            return;
+            return 0;
         }
         println!("  {} no .repo/skills.toml found", dim("--"),);
         println!("  Run `repo skills init` to create one,");
         println!("  or `repo skills export` to snapshot installed skills.");
-        return;
+        return 0;
     };
 
     if config.skills.is_empty() {
@@ -913,10 +933,10 @@ fn cmd_check(repo_root: &Path, json: bool) {
                 "{}",
                 serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
             );
-            return;
+            return 0;
         }
         println!("  No skills declared in .repo/skills.toml");
-        return;
+        return 0;
     }
 
     if !json {
@@ -1011,10 +1031,7 @@ fn cmd_check(repo_root: &Path, json: bool) {
             "{}",
             serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
         );
-        if fail > 0 {
-            std::process::exit(1);
-        }
-        return;
+        return i32::from(fail > 0);
     }
 
     if !json {
@@ -1037,9 +1054,7 @@ fn cmd_check(repo_root: &Path, json: bool) {
         }
     }
 
-    if fail > 0 {
-        std::process::exit(1);
-    }
+    i32::from(fail > 0)
 }
 
 // ── install ─────────────────────────────────────────────────────────
@@ -1090,7 +1105,7 @@ fn run_install(entry: &SkillEntry) -> InstallOutcome {
 }
 
 #[expect(clippy::too_many_lines)]
-fn cmd_install(repo_root: &Path, json: bool) {
+fn cmd_install(repo_root: &Path, json: bool) -> i32 {
     let Some(config) = SkillsConfig::load(repo_root) else {
         if json {
             let report = JsonError {
@@ -1100,10 +1115,10 @@ fn cmd_install(repo_root: &Path, json: bool) {
                 "{}",
                 serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
             );
-            std::process::exit(1);
+            return 1;
         }
         eprintln!("  No .repo/skills.toml found. Run `repo skills init` first.");
-        std::process::exit(1);
+        return 1;
     };
 
     let skills_dir = repo_root.join(".agents").join("skills");
@@ -1124,10 +1139,10 @@ fn cmd_install(repo_root: &Path, json: bool) {
                 "{}",
                 serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
             );
-            return;
+            return 0;
         }
         println!("  {} all skills are installed", green("ok"));
-        return;
+        return 0;
     }
 
     if !json {
@@ -1253,10 +1268,7 @@ fn cmd_install(repo_root: &Path, json: bool) {
             "{}",
             serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
         );
-        if install_failures > 0 {
-            std::process::exit(1);
-        }
-        return;
+        return i32::from(install_failures > 0);
     }
 
     if !json && !needs_fix.is_empty() {
@@ -1271,15 +1283,13 @@ fn cmd_install(repo_root: &Path, json: bool) {
         );
     }
 
-    if install_failures > 0 {
-        std::process::exit(1);
-    }
+    i32::from(install_failures > 0)
 }
 
 // ── fix ─────────────────────────────────────────────────────────────
 
 #[expect(clippy::too_many_lines)]
-fn cmd_fix(repo_root: &Path, json: bool) {
+fn cmd_fix(repo_root: &Path, json: bool) -> i32 {
     let Some(config) = SkillsConfig::load(repo_root) else {
         if json {
             let report = JsonError {
@@ -1289,10 +1299,10 @@ fn cmd_fix(repo_root: &Path, json: bool) {
                 "{}",
                 serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
             );
-            std::process::exit(1);
+            return 1;
         }
         eprintln!("  No .repo/skills.toml found. Run `repo skills init` first.");
-        std::process::exit(1);
+        return 1;
     };
 
     if config.skills.is_empty() {
@@ -1305,10 +1315,10 @@ fn cmd_fix(repo_root: &Path, json: bool) {
                 "{}",
                 serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
             );
-            return;
+            return 0;
         }
         println!("  {} .repo/skills.toml is empty, nothing to fix", dim("--"));
-        return;
+        return 0;
     }
 
     if !json {
@@ -1405,7 +1415,7 @@ fn cmd_fix(repo_root: &Path, json: bool) {
             "{}",
             serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
         );
-        return;
+        return 0;
     }
 
     if removed.is_empty() {
@@ -1413,7 +1423,7 @@ fn cmd_fix(repo_root: &Path, json: bool) {
             println!();
             println!("  {} nothing to fix — all entries look valid", green("ok"));
         }
-        return;
+        return 0;
     }
 
     // Write the pruned config back.
@@ -1429,7 +1439,7 @@ fn cmd_fix(repo_root: &Path, json: bool) {
 
     if let Err(e) = std::fs::write(&path, &content) {
         eprintln!("  {} failed to write {}: {e}", red("!!"), path.display());
-        std::process::exit(1);
+        return 1;
     }
 
     if !json {
@@ -1448,6 +1458,7 @@ fn cmd_fix(repo_root: &Path, json: bool) {
             dim("repo skills install"),
         );
     }
+    0
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -1707,12 +1718,13 @@ fn write_bundle_subdir(
 }
 
 #[allow(clippy::too_many_lines)]
-fn cmd_deploy(args: &[&str]) {
+fn cmd_deploy(args: &[&str]) -> i32 {
     let force = args.iter().any(|a| *a == "--force" || *a == "-f");
+    let json = args.contains(&"--json");
 
     let Some(home) = get_home_dir() else {
         eprintln!("{} cannot determine home directory", red("!!"));
-        std::process::exit(1);
+        return 1;
     };
 
     let canonical_base = home.join(".agents").join("skills");
@@ -1723,25 +1735,28 @@ fn cmd_deploy(args: &[&str]) {
         .filter(|a| home.join(a.config_dir).is_dir())
         .collect();
 
-    println!("{}", bold("Deploying built-in skills"));
-    println!();
+    if !json {
+        println!("{}", bold("Deploying built-in skills"));
+        println!();
 
-    if detected.is_empty() {
-        println!(
-            "  {} no agent config dirs found — writing to {} only",
-            yellow("!!"),
-            dim("~/.agents/skills/"),
-        );
-    } else {
-        let names: Vec<&str> = detected.iter().map(|a| a.name).collect();
-        println!("  {}  {}", dim("agents :"), names.join(", "));
+        if detected.is_empty() {
+            println!(
+                "  {} no agent config dirs found — writing to {} only",
+                yellow("!!"),
+                dim("~/.agents/skills/"),
+            );
+        } else {
+            let names: Vec<&str> = detected.iter().map(|a| a.name).collect();
+            println!("  {}  {}", dim("agents :"), names.join(", "));
+        }
+        println!("  {}  ~/.agents/skills/", dim("install:"));
+        println!();
     }
-    println!("  {}  ~/.agents/skills/", dim("install:"));
-    println!();
 
     let mut installed = 0u32;
-    let mut skipped   = 0u32;
-    let mut failed    = 0u32;
+    let mut skipped = 0u32;
+    let mut failed = 0u32;
+    let mut items = Vec::new();
 
     // Pre-compute display width from skill names across all source types.
     let w = ALL_SKILL_BUNDLES
@@ -1758,23 +1773,45 @@ fn cmd_deploy(args: &[&str]) {
                 let Some(name) = parse_skill_name(asset.content) else {
                     eprintln!("  {} could not parse name from {}", red("!!"), asset.filename);
                     failed += 1;
+                    items.push(SkillsDeployItem {
+                        name: asset.filename.to_string(),
+                        outcome: "failed".into(),
+                        message: Some("could not parse skill name from embedded asset".into()),
+                    });
                     continue;
                 };
                 let skill_dir = canonical_base.join(name);
-                let skill_md  = skill_dir.join("SKILL.md");
+                let skill_md = skill_dir.join("SKILL.md");
                 if skill_md.exists() && !force {
-                    println!("  {} {:<w$}  {}", dim("--"), name, dim("already installed"));
+                    if !json {
+                        println!("  {} {:<w$}  {}", dim("--"), name, dim("already installed"));
+                    }
                     skipped += 1;
+                    items.push(SkillsDeployItem {
+                        name: name.to_string(),
+                        outcome: "skipped".into(),
+                        message: Some("already installed".into()),
+                    });
                     continue;
                 }
                 if let Err(e) = std::fs::create_dir_all(&skill_dir) {
                     eprintln!("  {} {name}: mkdir failed: {e}", red("!!"));
                     failed += 1;
+                    items.push(SkillsDeployItem {
+                        name: name.to_string(),
+                        outcome: "failed".into(),
+                        message: Some(format!("mkdir failed: {e}")),
+                    });
                     continue;
                 }
                 if let Err(e) = std::fs::write(&skill_md, asset.content) {
                     eprintln!("  {} {name}: write SKILL.md failed: {e}", red("!!"));
                     failed += 1;
+                    items.push(SkillsDeployItem {
+                        name: name.to_string(),
+                        outcome: "failed".into(),
+                        message: Some(format!("write SKILL.md failed: {e}")),
+                    });
                     continue;
                 }
                 let r = write_bundle_subdir(&skill_dir, "references", bundle.references, force, false);
@@ -1787,13 +1824,25 @@ fn cmd_deploy(args: &[&str]) {
                     Ok(result) => result,
                     Err(e) if e.starts_with("__skip__") => {
                         let name = &e["__skip__".len()..];
-                        println!("  {} {:<w$}  {}", dim("--"), name, dim("already installed"));
+                        if !json {
+                            println!("  {} {:<w$}  {}", dim("--"), name, dim("already installed"));
+                        }
                         skipped += 1;
+                        items.push(SkillsDeployItem {
+                            name: name.to_string(),
+                            outcome: "skipped".into(),
+                            message: Some("already installed".into()),
+                        });
                         continue;
                     }
                     Err(e) => {
                         eprintln!("  {} {filename}: {e}", red("!!"));
                         failed += 1;
+                        items.push(SkillsDeployItem {
+                            name: filename.to_string(),
+                            outcome: "failed".into(),
+                            message: Some(e),
+                        });
                         continue;
                     }
                 }
@@ -1843,17 +1892,44 @@ fn cmd_deploy(args: &[&str]) {
             format!("  {}", dim(&format!("[{}]", extras.join(" "))))
         };
 
-        println!("  {} {:<w$}  {}{extras_str}", green("ok"), skill_name, dim(&agents_str));
+        if !json {
+            println!("  {} {:<w$}  {}{extras_str}", green("ok"), skill_name, dim(&agents_str));
+        }
+        items.push(SkillsDeployItem {
+            name: skill_name.to_string(),
+            outcome: "installed".into(),
+            message: if agents_str.is_empty() {
+                None
+            } else {
+                Some(format!("linked to {agents_str}"))
+            },
+        });
         installed += 1;
     }
 
-    println!();
-    print!("  {} installed, {} skipped", green(&installed.to_string()), skipped);
-    if failed > 0 { print!(", {} {}", red(&failed.to_string()), red("failed")); }
-    println!();
-    if skipped > 0 {
-        println!("  Run {} to overwrite.", dim("`repo skills deploy --force`"));
+    if json {
+        let report = SkillsDeployReport {
+            installed,
+            skipped,
+            failed,
+            items,
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+        );
+    } else {
+        println!();
+        print!("  {} installed, {} skipped", green(&installed.to_string()), skipped);
+        if failed > 0 {
+            print!(", {} {}", red(&failed.to_string()), red("failed"));
+        }
+        println!();
+        if skipped > 0 {
+            println!("  Run {} to overwrite.", dim("`repo skills deploy --force`"));
+        }
     }
+    i32::from(failed > 0)
 }
 
 fn parse_skill_description(path: &Path) -> Option<String> {
