@@ -149,6 +149,10 @@ const BUILTIN_SKILL_ZIPS: &[BinaryAsset] = &[
         filename: "response-dispatch.skill",
         bytes: include_bytes!("../../../defaults/skills/response-dispatch.skill"),
     },
+    BinaryAsset {
+        filename: "drift-risk-map.skill",
+        bytes: include_bytes!("../../../defaults/skills/drift-risk-map.skill"),
+    },
 ];
 
 // ── Skill bundle types ───────────────────────────────────────────────────────
@@ -197,7 +201,7 @@ struct SkillBundle {
     examples: &'static [BundledFile],
 }
 
-// All 13 built-in skills with their associated supporting files.
+// All 14 built-in skills with their associated supporting files.
 // Used by `repo skills deploy` to produce self-contained skill directories,
 // matching the pattern of e.g. `rust-best-practices` (SKILL.md + references/).
 const ALL_SKILL_BUNDLES: &[SkillBundle] = &[
@@ -439,6 +443,17 @@ const ALL_SKILL_BUNDLES: &[SkillBundle] = &[
         scripts: &[],
         examples: &[],
     },
+    SkillBundle {
+        source: SkillSource::Zip {
+            filename: "drift-risk-map.skill",
+            bytes: include_bytes!(
+                "../../../defaults/skills/drift-risk-map.skill"
+            ),
+        },
+        references: &[],
+        scripts: &[],
+        examples: &[],
+    },
 ];
 
 // ── Known agent configurations ───────────────────────────────────────────────
@@ -657,7 +672,7 @@ in the project's .agents/skills/ directory.
 Run `repo skills fix` to automatically remove entries that cannot be installed
 (missing source field or skill not found at the declared source).
 
-`repo skills deploy` writes all 13 built-in skills directly into ~/.agents/skills/
+`repo skills deploy` writes all 14 built-in skills directly into ~/.agents/skills/
 and creates agent-specific symlinks (e.g. ~/.claude/skills/) for every detected
 agent. No external registry required — the skill content is embedded in the binary.
 
