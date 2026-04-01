@@ -80,7 +80,7 @@ fn prompt_init_writes_defaults_and_list_reports_builtins() {
     let text = stdout(&list);
     assert!(text.contains("assess-corpus"));
     assert!(text.contains("validate-plan"));
-    assert!(text.contains("6 custom"));
+    assert!(text.contains("7 custom"));
 
     cleanup(repo_root);
 }
@@ -92,7 +92,7 @@ fn prompt_init_json_emits_machine_readable_report() {
 
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
-    assert_eq!(value["written"], 6);
+    assert_eq!(value["written"], 7);
     assert_eq!(value["skipped"], 0);
 
     cleanup(repo_root);

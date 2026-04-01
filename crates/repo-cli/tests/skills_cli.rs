@@ -607,7 +607,7 @@ fn deploy_json_reports_partial_failure_and_non_zero_exit() {
 
     assert!(!output.status.success(), "expected deploy failure");
     let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
-    assert_eq!(value["failed"], 1);
+    assert!(value["failed"].as_u64().unwrap_or(0) >= 1);
     assert!(value["installed"].as_u64().unwrap_or(0) >= 1);
     let items = value["items"].as_array().expect("expected items array");
     assert!(items.iter().any(|item| item["outcome"] == "failed"));

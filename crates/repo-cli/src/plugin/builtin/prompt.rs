@@ -53,6 +53,10 @@ const DEFAULTS: &[DefaultPrompt] = &[
         filename: "validate-plan.md",
         content: include_str!("../../../defaults/prompts/validate-plan.md"),
     },
+    DefaultPrompt {
+        filename: "audit-repo.md",
+        content: include_str!("../../../defaults/prompts/audit-repo.md"),
+    },
 ];
 
 fn load_defaults() -> Vec<Prompt> {

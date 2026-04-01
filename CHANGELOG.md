@@ -4,7 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project is intended to follow Semantic Versioning.
 
-## [0.4.0] - 2026-04-01
+## [0.4.0-rc-2] - 2026-04-01
+
+### Added
+
+- `response-dispatch.skill` — new built-in ZIP skill for response dispatch patterns
+- `audit-repo.md` — new built-in prompt for codebase comparative analysis and inspection
+- built-in skill count raised to 13 (was 12), prompt count to 7 (was 6)
+
+## [0.4.0-rc-1] - 2026-04-01
 
 ### Added
 
