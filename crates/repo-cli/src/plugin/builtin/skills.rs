@@ -729,26 +729,6 @@ fn write_builtin_asset_groups(repo_dir: &Path) -> Result<(), ()> {
     Ok(())
 }
 
-fn bundled_skill_name(asset: &BinaryAsset) -> String {
-    let cursor = std::io::Cursor::new(asset.bytes);
-    let Ok(mut archive) = zip::ZipArchive::new(cursor) else {
-        return asset.filename.trim_end_matches(".skill").to_owned();
-    };
-
-    let Ok(mut skill_md) = archive.by_name("SKILL.md") else {
-        return asset.filename.trim_end_matches(".skill").to_owned();
-    };
-
-    let mut content = String::new();
-    if std::io::Read::read_to_string(&mut skill_md, &mut content).is_err() {
-        return asset.filename.trim_end_matches(".skill").to_owned();
-    }
-
-    parse_skill_name(&content)
-        .unwrap_or(asset.filename.trim_end_matches(".skill"))
-        .to_owned()
-}
-
 fn extract_bundled_skill_zips(skills_dir: &Path) {
     let mut zip_written = 0u32;
     let mut zip_skipped = 0u32;
@@ -763,7 +743,27 @@ fn extract_bundled_skill_zips(skills_dir: &Path) {
             }
         };
 
-        let skill_name = bundled_skill_name(asset);
+        // Locate SKILL.md and determine prefix to strip.
+        let Some((skill_md_path, prefix)) = find_skill_md_in_zip(&mut archive) else {
+            eprintln!("  {} {}: no SKILL.md found in ZIP", red("!!"), asset.filename);
+            continue;
+        };
+
+        // Read skill name from SKILL.md frontmatter.
+        let skill_name = match archive.by_name(&skill_md_path) {
+            Ok(mut f) => {
+                let mut content = String::new();
+                if std::io::Read::read_to_string(&mut f, &mut content).is_err() {
+                    asset.filename.trim_end_matches(".skill").to_owned()
+                } else {
+                    parse_skill_name(&content)
+                        .unwrap_or(asset.filename.trim_end_matches(".skill"))
+                        .to_owned()
+                }
+            }
+            Err(_) => asset.filename.trim_end_matches(".skill").to_owned(),
+        };
+
         let dest_dir = skills_dir.join(&skill_name);
         if dest_dir.join("SKILL.md").exists() {
             zip_skipped += 1;
@@ -787,7 +787,19 @@ fn extract_bundled_skill_zips(skills_dir: &Path) {
                 continue;
             };
             let entry_path = entry_path.clone();
-            let dest = dest_dir.join(&entry_path);
+
+            // Strip the subdirectory prefix so files land directly in dest_dir/.
+            let relative = entry_path
+                .to_string_lossy()
+                .strip_prefix(&prefix)
+                .unwrap_or(&entry_path.to_string_lossy())
+                .to_string();
+
+            if relative.is_empty() {
+                continue;
+            }
+
+            let dest = dest_dir.join(&relative);
             if let Some(parent) = dest.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
@@ -1717,15 +1729,38 @@ fn skill_name_from_bundle(bundle: &SkillBundle) -> Option<String> {
             parse_skill_name(asset.content).map(str::to_owned)
         }
         SkillSource::Zip { bytes, .. } => {
-            // Read SKILL.md from the ZIP and parse the name field.
+            // Read SKILL.md from the ZIP (root or subdirectory) and parse the name field.
             let cursor = std::io::Cursor::new(*bytes);
             let mut archive = zip::ZipArchive::new(cursor).ok()?;
-            let mut skill_md = archive.by_name("SKILL.md").ok()?;
+            let (skill_md_path, _) = find_skill_md_in_zip(&mut archive)?;
+            let mut skill_md = archive.by_name(&skill_md_path).ok()?;
             let mut content = String::new();
             std::io::Read::read_to_string(&mut skill_md, &mut content).ok()?;
             parse_skill_name(&content).map(str::to_owned)
         }
     }
+}
+
+/// Find the path to `SKILL.md` inside a ZIP archive.
+///
+/// Handles both root-level (`SKILL.md`) and subdirectory-level
+/// (`<prefix>/SKILL.md`) layouts used by different skill packagers.
+/// Returns the prefix to strip (empty string for root-level).
+fn find_skill_md_in_zip(archive: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>) -> Option<(String, String)> {
+    for i in 0..archive.len() {
+        let entry = archive.by_index_raw(i).ok()?;
+        let name = entry.name().to_owned();
+        if name == "SKILL.md" {
+            // Root-level SKILL.md — no prefix to strip.
+            return Some((name, String::new()));
+        }
+        if name.ends_with("/SKILL.md") {
+            // Subdirectory SKILL.md — prefix is everything before it.
+            let prefix = name.trim_end_matches("SKILL.md").to_owned();
+            return Some((name, prefix));
+        }
+    }
+    None
 }
 
 /// Extract a `.skill` ZIP archive into `~/.agents/skills/<name>/`.
@@ -1741,11 +1776,15 @@ fn deploy_skill_zip(
     let mut archive =
         zip::ZipArchive::new(cursor).map_err(|e| format!("invalid ZIP in {source_filename}: {e}"))?;
 
-    // Read SKILL.md first to extract the skill name.
+    // Locate SKILL.md (may be at root or inside a subdirectory).
+    let (skill_md_path, prefix) = find_skill_md_in_zip(&mut archive)
+        .ok_or_else(|| format!("{source_filename}: no SKILL.md found in ZIP"))?;
+
+    // Read SKILL.md to extract the skill name.
     let skill_name = {
         let mut skill_md_file = archive
-            .by_name("SKILL.md")
-            .map_err(|_| format!("{source_filename}: no SKILL.md found in ZIP"))?;
+            .by_name(&skill_md_path)
+            .map_err(|_| format!("{source_filename}: cannot read SKILL.md in ZIP"))?;
         let mut content = String::new();
         std::io::Read::read_to_string(&mut skill_md_file, &mut content)
             .map_err(|e| format!("{source_filename}: read SKILL.md: {e}"))?;
@@ -1782,7 +1821,18 @@ fn deploy_skill_zip(
             .ok_or_else(|| format!("{skill_name}: unsafe path in ZIP"))?
             .clone();
 
-        let dest = skill_dir.join(&entry_path);
+        // Strip the subdirectory prefix so files land directly in skill_dir/.
+        let relative = entry_path
+            .to_string_lossy()
+            .strip_prefix(&prefix)
+            .unwrap_or(&entry_path.to_string_lossy())
+            .to_string();
+
+        if relative.is_empty() {
+            continue;
+        }
+
+        let dest = skill_dir.join(&relative);
 
         if dest.exists() && !force {
             continue;
@@ -1800,8 +1850,11 @@ fn deploy_skill_zip(
         std::fs::write(&dest, &content)
             .map_err(|e| format!("{skill_name}: write {}: {e}", dest.display()))?;
 
-        // Count by subdirectory.
-        let top = entry_path.components().next().map(|c| c.as_os_str().to_string_lossy().into_owned());
+        // Count by subdirectory (after prefix stripping).
+        let top = std::path::Path::new(&relative)
+            .components()
+            .next()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned());
         match top.as_deref() {
             Some("references") => refs += 1,
             Some("scripts")    => {

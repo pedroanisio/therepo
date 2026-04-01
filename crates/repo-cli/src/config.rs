@@ -110,22 +110,19 @@ impl RepoConfig {
 
 /// Find the repository root by walking up from CWD.
 ///
-/// Strong markers (`.repo/`, `.git/`) are collected across all ancestors;
-/// the highest one wins — this ensures we find the true repo root even
-/// when invoked from a nested subdirectory.  Weak markers (`Cargo.toml`)
-/// are only used as a fallback when no strong marker exists anywhere.
+/// Strong markers (`.repo/`, `.git/`) prefer the nearest ancestor so the
+/// current repository wins over unrelated parent directories. Weak markers
+/// (`Cargo.toml`) are only used as a fallback when no strong marker exists.
 #[must_use]
 pub fn find_repo_root() -> PathBuf {
     let start = std::env::current_dir().unwrap_or_default();
     let mut dir = start.clone();
-
-    let mut last_strong: Option<PathBuf> = None;
     let mut first_weak: Option<PathBuf> = None;
 
     loop {
-        // Strong markers — keep the highest (outermost) match.
+        // Strong markers — return the nearest repository boundary.
         if dir.join(".repo").is_dir() || dir.join(".git").exists() {
-            last_strong = Some(dir.clone());
+            return dir;
         }
 
         // Weak marker — keep the first (deepest) match as fallback.
@@ -138,13 +135,34 @@ pub fn find_repo_root() -> PathBuf {
         }
     }
 
-    last_strong.or(first_weak).unwrap_or(start)
+    first_weak.unwrap_or(start)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+
+    struct CwdGuard {
+        previous: PathBuf,
+    }
+
+    impl CwdGuard {
+        fn change_to(path: &Path) -> Self {
+            let previous = std::env::current_dir().unwrap();
+            std::env::set_current_dir(path).unwrap();
+            Self { previous }
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.previous);
+        }
+    }
 
     fn write_temp(name: &str, content: &str) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(name);
@@ -152,6 +170,17 @@ mod tests {
             .unwrap()
             .write_all(content.as_bytes())
             .unwrap();
+        path
+    }
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let unique = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("repo-config-{name}-{nanos}-{unique}"));
+        std::fs::create_dir_all(&path).unwrap();
         path
     }
 
@@ -203,6 +232,25 @@ mod tests {
             let cfg = RepoConfig::load_from(&path);
             assert_eq!(cfg.check.fail_on, "warning");
             std::fs::remove_file(path).ok();
+        }
+    }
+
+    mod find_repo_root_tests {
+        use super::*;
+
+        #[test]
+        fn prefers_nearest_strong_marker_over_outer_ancestor() {
+            let outer = temp_dir("outer");
+            let inner = outer.join("workspace").join("repo");
+            let nested = inner.join("src").join("bin");
+            std::fs::create_dir_all(outer.join(".repo")).unwrap();
+            std::fs::create_dir_all(inner.join(".git")).unwrap();
+            std::fs::create_dir_all(&nested).unwrap();
+
+            let _guard = CwdGuard::change_to(&nested);
+            let found = find_repo_root();
+
+            assert_eq!(found, inner);
         }
     }
 }
