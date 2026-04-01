@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project is intended to follow Semantic Versioning.
 
+## [0.4.0-rc-3] - 2026-04-01
+
+### Added
+
+- `drift-risk-map.skill` — new built-in ZIP skill for documentation drift risk analysis
+- built-in skill count raised to 14 (was 13)
+
+### Fixed
+
+- ZIP skill extraction now handles subdirectory layouts (e.g. `<name>/SKILL.md`) via `find_skill_md_in_zip` helper, fixing deploy failures for `codebase-requirements` and `response-dispatch`
+- `repo skills deploy` now succeeds with 0 failures; deploy tests updated from expecting partial failure to expecting full success
+- removed dead `bundled_skill_name` function
+
 ## [0.4.0-rc-2] - 2026-04-01
 
 ### Added

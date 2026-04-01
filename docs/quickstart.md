@@ -48,6 +48,7 @@ You should see the built-in command list:
 - `prompt`
 - `ulid`
 - `plugins`
+- `completions`
 
 ## Try The Main Flows
 
@@ -87,7 +88,7 @@ repo skills init
 repo skills deploy
 ```
 
-Installs all 12 built-in skills into `~/.agents/skills/` and symlinks them for
+Installs all 17 built-in skills into `~/.agents/skills/` and symlinks them for
 every detected agent (Claude Code, Codex, etc.).
 
 ## What Gets Created

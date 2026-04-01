@@ -63,13 +63,13 @@ This creates:
 
 ```
 .repo/
-  config.toml           # Repository configuration (auto-created)
+  config.toml           # Repository configuration (create manually if needed)
   health.toml           # Tool versions and custom checks
   skills.toml           # Declared agent skills
-  skills/               # Built-in skill definitions (12 skills)
+  skills/               # Built-in skill definitions (14 skills)
   references/           # Reference documents (8 files)
   schemas/              # Formal schemas (2 files)
-  prompts/              # Reusable prompt snippets (6 prompts)
+  prompts/              # Reusable prompt snippets (7 prompts)
   storage/              # Internal storage (auto-created)
   plugins/              # External plugins directory
 ```
@@ -91,9 +91,9 @@ repo --json       # machine-readable
 ```json
 {
   "name": "project-name",
-  "docs": { "plans": 2, "designs": 1, "adrs": 0, "references": 2 },
-  "plugins": { "builtin": 7, "external": 0 },
-  "config": ".repo/config.toml"
+  "builtin_plugins": 5,
+  "external_plugins": 0,
+  "config_present": true
 }
 ```
 
@@ -154,6 +154,7 @@ repo health --check-updates    # Query registries for newer versions
 repo health --json             # Machine-readable health report
 repo health init               # Create blank .repo/health.toml template
 repo health export             # Snapshot current environment into .repo/health.toml
+repo health fix                # Auto-fix failed checks that have a fix_cmd
 ```
 
 **Flags:**
@@ -225,7 +226,7 @@ repo skills deploy --force     # Overwrite existing skill files
 
 **`deploy` flag:** `--force` / `-f` — overwrite already-installed skills
 
-**12 built-in skills:**
+**17 built-in skills:**
 
 | Skill | Description |
 |-------|-------------|
@@ -240,7 +241,12 @@ repo skills deploy --force     # Overwrite existing skill files
 | behavioral-layer | Define behavioral traits for agent reasoning |
 | doc-hygiene | Discover, classify, and manage documentation |
 | cli-ux-patterns | CLI UX patterns in Rust with clap |
+| anti-slop | Review prose for low-substance writing using a two-tier diagnostic |
+| doc-patch | Surgical patch-based editing for Markdown documents |
+| conceptual-codebase-analysis | Perform deep conceptual analysis of codebases and infer design intent |
 | codebase-requirements | Generate comprehensive REQUIREMENTS.md |
+| response-dispatch | Route tasks to execution, artefact, or text paths |
+| drift-risk-map | Audit codebase for silent drift-risk couplings |
 
 **`.repo/skills.toml` structure:**
 ```toml
@@ -277,11 +283,12 @@ repo prompt init                     # Write built-in defaults to .repo/prompts/
 | `--tag <TAG>` | Filter prompts by tag |
 | `--json` | Emit JSON |
 
-**6 built-in prompts:**
+**7 built-in prompts:**
 
 | Name | Tags | Purpose |
 |------|------|---------|
 | assess-corpus | review, assess, corpus | Formal document assessment against reference corpus |
+| audit-repo | audit, inspect, codebase | Codebase comparative analysis and inspection |
 | feedback-processor | feedback, review, process | Evaluate feedback as claims before acting |
 | format-plan | plan, format, refactor, markdown | Format into phased markdown plans with progress |
 | review-cycle | review, verify, reference | Formal verification against a reference corpus |
@@ -317,7 +324,9 @@ repo plugins info <name> # Show details about a specific plugin
 repo plugins --json      # Machine-readable listing
 ```
 
-**7 built-in plugins:** docs, health, skills, prompt, ulid, plugins, completions
+**5 built-in plugins:** docs, health, skills, prompt, ulid
+
+`plugins` and `completions` are top-level CLI commands but not registered plugins.
 
 External plugins are discovered from `.repo/plugins/<name>/plugin.toml`.
 
@@ -408,7 +417,7 @@ prevents ANSI escape codes from contaminating the output.
 
 ## 6. Bundled Assets (deployed by `repo skills init`)
 
-### Skills (12)
+### Skills (14)
 Copied to `.repo/skills/` — agent capability definitions.
 
 ### References (8)
@@ -433,7 +442,7 @@ Copied to `.repo/schemas/` — formal TypeScript schema definitions.
 | plan-schema.ts | PlanSchema v0.3.0 |
 | prompt-schema.ts | PromptDocument v0.3.0 |
 
-### Prompts (6)
+### Prompts (7)
 Copied to `.repo/prompts/` — reusable prompt snippets (see section 3.5).
 
 ---

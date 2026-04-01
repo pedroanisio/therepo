@@ -505,3 +505,47 @@ fn print_table(prompts: &[&Prompt]) {
     println!("  {} prompt(s)  {}", prompts.len(), dim(&parts.join(", ")));
     println!("  Run {} to output a snippet.", dim("repo prompt <name>"));
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression tests that catch documentation drift when built-in
+    /// prompts are added or removed.
+    mod asset_count_drift {
+        use super::*;
+
+        /// The prompt count stated in AGENTS.md must match the actual
+        /// number of built-in prompts embedded in this module.
+        /// If this test fails, update the stale count in AGENTS.md.
+        #[test]
+        fn prompt_count_matches_agents_md() {
+            let expected = DEFAULTS.len();
+            let agents_md = include_str!("../../../../../AGENTS.md");
+            let needle = format!("{expected} built-in prompts");
+            assert!(
+                agents_md.contains(&needle),
+                "AGENTS.md does not contain \"{needle}\". \
+                 Update the prompt count in AGENTS.md to match the \
+                 {expected} prompts defined in DEFAULTS."
+            );
+        }
+    }
+
+    mod parse_prompt_tests {
+        use super::*;
+        use std::path::Path;
+
+        #[test]
+        fn all_defaults_parse_successfully() {
+            for d in DEFAULTS {
+                let p = parse_prompt(d.content, Path::new(d.filename));
+                assert!(
+                    !p.name.is_empty(),
+                    "prompt {:?} parsed with empty name",
+                    d.filename
+                );
+            }
+        }
+    }
+}

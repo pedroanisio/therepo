@@ -55,7 +55,12 @@ repo docs [OPTIONS] [COMMAND]
 
 ### Command-Specific Options
 
+- `<query>` shows details for a specific document by filename, stem, or title prefix
 - `--status <STATUS>` filters listed documents by status
+- `--sort <date|status|title|progress>` sorts the result set
+- `--limit <N>` limits the number of listed documents
+- `--details <none|incomplete|all>` expands phase details in human-readable output
+- `--interactive` interactively choose one document to inspect
 - `--json` emits machine-readable output for the selected doc list
 
 ### Notes

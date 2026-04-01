@@ -1,0 +1,429 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 2140" width="1400" height="2140">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5"
+            markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke"
+            stroke-width="1.8" stroke-linecap="round"
+            stroke-linejoin="round"/>
+    </marker>
+
+    <linearGradient id="ring-p0" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#D85A30" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#D85A30" stop-opacity="0.03"/>
+    </linearGradient>
+    <linearGradient id="ring-p1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#BA7517" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#BA7517" stop-opacity="0.02"/>
+    </linearGradient>
+    <linearGradient id="ring-p2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#378ADD" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#378ADD" stop-opacity="0.01"/>
+    </linearGradient>
+    <linearGradient id="ring-p3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1D9E75" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#1D9E75" stop-opacity="0.01"/>
+    </linearGradient>
+
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap');
+      text { font-family: 'IBM Plex Sans', -apple-system, sans-serif; }
+      .mono { font-family: 'IBM Plex Mono', monospace; }
+      .title { font-size: 28px; font-weight: 600; fill: #1a1a1a; }
+      .subtitle { font-size: 15px; font-weight: 400; fill: #666; }
+      .section-title { font-size: 18px; font-weight: 600; fill: #1a1a1a; }
+      .section-sub { font-size: 13px; font-weight: 400; fill: #888; }
+      .hub-label { font-size: 22px; font-weight: 600; fill: #fff; }
+      .hub-sub { font-size: 13px; font-weight: 400; fill: rgba(255,255,255,0.8); }
+      .node-title { font-size: 13px; font-weight: 500; }
+      .node-sub { font-size: 11px; font-weight: 400; }
+      .ring-label { font-size: 11px; font-weight: 500; }
+      .stat-num { font-size: 32px; font-weight: 600; }
+      .stat-label { font-size: 11px; font-weight: 500; fill: #888; }
+      .badge-text { font-size: 10px; font-weight: 600; fill: #fff; }
+      .cell-head { font-size: 11px; font-weight: 500; fill: #555; }
+      .cell-text { font-size: 11px; font-weight: 400; fill: #333; }
+      .cell-mono { font-size: 10px; font-weight: 400; fill: #555; font-family: 'IBM Plex Mono', monospace; }
+      .fix-label { font-size: 11px; font-weight: 600; fill: #333; }
+      .fix-text { font-size: 11px; font-weight: 400; fill: #444; }
+      .disclaimer { font-size: 10px; font-weight: 400; fill: #999; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1400" height="2140" fill="#FAFAF8"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Section 1: Header + stat cards                                 -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+
+  <text class="title" x="70" y="48">Drift-Risk Map — repo (therepo)</text>
+  <text class="subtitle" x="70" y="72">16 couplings · 14 skills · 7 prompts · 1 crate · commit 7c36240</text>
+
+  <line x1="70" y1="88" x2="1330" y2="88" stroke="#e0ddd5" stroke-width="0.5"/>
+
+  <!-- Stat card: CRITICAL -->
+  <rect x="70" y="106" width="150" height="72" rx="10" fill="#FEF3EF" stroke="#F0997B" stroke-width="0.5"/>
+  <text class="stat-num" x="90" y="150" fill="#712B13">3</text>
+  <text class="stat-label" x="126" y="140" fill="#712B13">CRITICAL</text>
+  <text style="font-size:10px;fill:#993C1D" x="126" y="155">Active drift</text>
+
+  <!-- Stat card: HIGH -->
+  <rect x="238" y="106" width="150" height="72" rx="10" fill="#FDF6E9" stroke="#FAC775" stroke-width="0.5"/>
+  <text class="stat-num" x="258" y="150" fill="#633806">9</text>
+  <text class="stat-label" x="294" y="140" fill="#633806">HIGH</text>
+  <text style="font-size:10px;fill:#854F0B" x="294" y="155">Weak guards</text>
+
+  <!-- Stat card: MODERATE -->
+  <rect x="406" y="106" width="150" height="72" rx="10" fill="#EDF4FC" stroke="#85B7EB" stroke-width="0.5"/>
+  <text class="stat-num" x="426" y="150" fill="#042C53">2</text>
+  <text class="stat-label" x="462" y="140" fill="#042C53">MODERATE</text>
+  <text style="font-size:10px;fill:#185FA5" x="462" y="155">Guarded w/ gaps</text>
+
+  <!-- Stat card: LOW -->
+  <rect x="574" y="106" width="150" height="72" rx="10" fill="#E9F7F0" stroke="#5DCAA5" stroke-width="0.5"/>
+  <text class="stat-num" x="594" y="150" fill="#04342C">2</text>
+  <text class="stat-label" x="630" y="140" fill="#04342C">LOW</text>
+  <text style="font-size:10px;fill:#0F6E56" x="630" y="155">Strong guards</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Section 2: Hub-and-spoke diagram                               -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+
+  <line x1="70" y1="208" x2="1330" y2="208" stroke="#e0ddd5" stroke-width="0.5"/>
+  <text class="section-title" x="70" y="238">Coupling Topology</text>
+  <text class="section-sub" x="70" y="256">Source-of-truth hub with dependent artifacts on risk rings</text>
+
+  <g transform="translate(700, 590)">
+    <!-- Risk rings (outermost first) -->
+    <circle cx="0" cy="0" r="310" fill="url(#ring-p3)" stroke="#1D9E75" stroke-width="0.4" stroke-dasharray="6 4" opacity="0.35"/>
+    <circle cx="0" cy="0" r="245" fill="url(#ring-p2)" stroke="#378ADD" stroke-width="0.4" stroke-dasharray="6 4" opacity="0.4"/>
+    <circle cx="0" cy="0" r="175" fill="url(#ring-p1)" stroke="#BA7517" stroke-width="0.4" stroke-dasharray="6 4" opacity="0.5"/>
+    <circle cx="0" cy="0" r="110" fill="url(#ring-p0)" stroke="#D85A30" stroke-width="0.4" stroke-dasharray="6 4" opacity="0.6"/>
+
+    <!-- Ring labels -->
+    <text class="ring-label" x="316" y="4" fill="#1D9E75" opacity="0.7">P3 LOW</text>
+    <text class="ring-label" x="251" y="4" fill="#378ADD" opacity="0.7">P2</text>
+    <text class="ring-label" x="181" y="4" fill="#BA7517" opacity="0.7">P1</text>
+    <text class="ring-label" x="116" y="4" fill="#D85A30" opacity="0.7">P0</text>
+
+    <!-- Hub node -->
+    <circle cx="0" cy="0" r="42" fill="#534AB7" stroke="#3C3489" stroke-width="1.5"/>
+    <text class="hub-label" x="0" y="-6" text-anchor="middle" dominant-baseline="central">defaults/</text>
+    <text class="hub-sub" x="0" y="14" text-anchor="middle" dominant-baseline="central">Source of truth</text>
+
+    <!-- ── Connectors ── -->
+    <!-- P0 connectors (CRITICAL) -->
+    <line x1="-60" y1="-75" x2="-30" y2="-35" stroke="#D85A30" stroke-width="2.5" opacity="0.5" marker-end="url(#arr)"/>
+    <line x1="60" y1="-75" x2="30" y2="-35" stroke="#D85A30" stroke-width="2.5" opacity="0.5" marker-end="url(#arr)"/>
+    <line x1="0" y1="85" x2="0" y2="45" stroke="#D85A30" stroke-width="2.5" opacity="0.5" marker-end="url(#arr)"/>
+
+    <!-- P1 connectors (HIGH) -->
+    <line x1="-155" y1="-80" x2="-32" y2="-25" stroke="#BA7517" stroke-width="1.8" opacity="0.4" marker-end="url(#arr)"/>
+    <line x1="155" y1="-80" x2="32" y2="-25" stroke="#BA7517" stroke-width="1.8" opacity="0.4" marker-end="url(#arr)"/>
+    <line x1="-140" y1="95" x2="-30" y2="25" stroke="#BA7517" stroke-width="1.8" opacity="0.4" marker-end="url(#arr)"/>
+    <line x1="140" y1="95" x2="30" y2="25" stroke="#BA7517" stroke-width="1.8" opacity="0.4" marker-end="url(#arr)"/>
+
+    <!-- P2 connectors (MODERATE) -->
+    <line x1="-215" y1="-115" x2="-35" y2="-22" stroke="#378ADD" stroke-width="1.2" opacity="0.35" marker-end="url(#arr)"/>
+    <line x1="215" y1="-115" x2="35" y2="-22" stroke="#378ADD" stroke-width="1.2" opacity="0.35" marker-end="url(#arr)"/>
+
+    <!-- P3 connectors (LOW) -->
+    <line x1="-245" y1="185" x2="-32" y2="28" stroke="#1D9E75" stroke-width="0.8" stroke-dasharray="4 3" opacity="0.35" marker-end="url(#arr)"/>
+    <line x1="245" y1="185" x2="32" y2="28" stroke="#1D9E75" stroke-width="0.8" stroke-dasharray="4 3" opacity="0.35" marker-end="url(#arr)"/>
+
+    <!-- ── Spoke nodes ── -->
+
+    <!-- P0: AGENTS.md skill count -->
+    <g transform="translate(-80, -110)">
+      <rect x="-70" y="-24" width="140" height="48" rx="8" fill="#FEF3EF" stroke="#D85A30" stroke-width="1"/>
+      <text class="node-title" x="0" y="-6" text-anchor="middle" fill="#712B13">AGENTS.md</text>
+      <text class="node-sub" x="0" y="10" text-anchor="middle" fill="#993C1D">Skill count: 12</text>
+      <rect x="-27" y="28" width="54" height="16" rx="4" fill="#D85A30"/>
+      <text class="badge-text" x="0" y="38" text-anchor="middle" dominant-baseline="central">CRITICAL</text>
+    </g>
+
+    <!-- P0: quickstart.md + bootstrap guide -->
+    <g transform="translate(80, -110)">
+      <rect x="-70" y="-24" width="140" height="48" rx="8" fill="#FEF3EF" stroke="#D85A30" stroke-width="1"/>
+      <text class="node-title" x="0" y="-6" text-anchor="middle" fill="#712B13">quickstart.md</text>
+      <text class="node-sub" x="0" y="10" text-anchor="middle" fill="#993C1D">Skill count: 12</text>
+      <rect x="-27" y="28" width="54" height="16" rx="4" fill="#D85A30"/>
+      <text class="badge-text" x="0" y="38" text-anchor="middle" dominant-baseline="central">CRITICAL</text>
+    </g>
+
+    <!-- P0: AGENTS.md prompt count -->
+    <g transform="translate(0, 110)">
+      <rect x="-70" y="-24" width="140" height="48" rx="8" fill="#FEF3EF" stroke="#D85A30" stroke-width="1"/>
+      <text class="node-title" x="0" y="-6" text-anchor="middle" fill="#712B13">AGENTS.md</text>
+      <text class="node-sub" x="0" y="10" text-anchor="middle" fill="#993C1D">Prompt count: 6</text>
+      <rect x="-27" y="28" width="54" height="16" rx="4" fill="#D85A30"/>
+      <text class="badge-text" x="0" y="38" text-anchor="middle" dominant-baseline="central">CRITICAL</text>
+    </g>
+
+    <!-- P1: Crate README -->
+    <g transform="translate(-175, -100)">
+      <rect x="-70" y="-24" width="140" height="48" rx="8" fill="#FDF6E9" stroke="#BA7517" stroke-width="0.8"/>
+      <text class="node-title" x="0" y="-6" text-anchor="middle" fill="#633806">Crate README</text>
+      <text class="node-sub" x="0" y="10" text-anchor="middle" fill="#854F0B">12 skills listed</text>
+      <rect x="-17" y="28" width="34" height="16" rx="4" fill="#BA7517"/>
+      <text class="badge-text" x="0" y="38" text-anchor="middle" dominant-baseline="central">HIGH</text>
+    </g>
+
+    <!-- P1: CHANGELOG.md -->
+    <g transform="translate(175, -100)">
+      <rect x="-70" y="-24" width="140" height="48" rx="8" fill="#FDF6E9" stroke="#BA7517" stroke-width="0.8"/>
+      <text class="node-title" x="0" y="-6" text-anchor="middle" fill="#633806">CHANGELOG.md</text>
+      <text class="node-sub" x="0" y="10" text-anchor="middle" fill="#854F0B">Version sync</text>
+      <rect x="-17" y="28" width="34" height="16" rx="4" fill="#BA7517"/>
+      <text class="badge-text" x="0" y="38" text-anchor="middle" dominant-baseline="central">HIGH</text>
+    </g>
+
+    <!-- P1: cli-reference.md -->
+    <g transform="translate(-160, 115)">
+      <rect x="-75" y="-24" width="150" height="48" rx="8" fill="#FDF6E9" stroke="#BA7517" stroke-width="0.8"/>
+      <text class="node-title" x="0" y="-6" text-anchor="middle" fill="#633806">cli-reference.md</text>
+      <text class="node-sub" x="0" y="10" text-anchor="middle" fill="#854F0B">Flags &amp; commands</text>
+      <rect x="-17" y="28" width="34" height="16" rx="4" fill="#BA7517"/>
+      <text class="badge-text" x="0" y="38" text-anchor="middle" dominant-baseline="central">HIGH</text>
+    </g>
+
+    <!-- P1: skills.toml template -->
+    <g transform="translate(160, 115)">
+      <rect x="-70" y="-24" width="140" height="48" rx="8" fill="#FDF6E9" stroke="#BA7517" stroke-width="0.8"/>
+      <text class="node-title" x="0" y="-6" text-anchor="middle" fill="#633806">skills.toml</text>
+      <text class="node-sub" x="0" y="10" text-anchor="middle" fill="#854F0B">Template drift</text>
+      <rect x="-17" y="28" width="34" height="16" rx="4" fill="#BA7517"/>
+      <text class="badge-text" x="0" y="38" text-anchor="middle" dominant-baseline="central">HIGH</text>
+    </g>
+
+    <!-- P2: Tests -->
+    <g transform="translate(-235, -140)">
+      <rect x="-70" y="-24" width="140" height="48" rx="8" fill="#EDF4FC" stroke="#378ADD" stroke-width="0.7"/>
+      <text class="node-title" x="0" y="-6" text-anchor="middle" fill="#042C53">tests/*.rs</text>
+      <text class="node-sub" x="0" y="10" text-anchor="middle" fill="#185FA5">Hardcoded strings</text>
+      <rect x="-27" y="28" width="54" height="16" rx="4" fill="#378ADD"/>
+      <text class="badge-text" x="0" y="38" text-anchor="middle" dominant-baseline="central">MODERATE</text>
+    </g>
+
+    <!-- P2: Release workflow -->
+    <g transform="translate(235, -140)">
+      <rect x="-70" y="-24" width="140" height="48" rx="8" fill="#EDF4FC" stroke="#378ADD" stroke-width="0.7"/>
+      <text class="node-title" x="0" y="-6" text-anchor="middle" fill="#042C53">release.yml</text>
+      <text class="node-sub" x="0" y="10" text-anchor="middle" fill="#185FA5">Path env vars</text>
+      <rect x="-27" y="28" width="54" height="16" rx="4" fill="#378ADD"/>
+      <text class="badge-text" x="0" y="38" text-anchor="middle" dominant-baseline="central">MODERATE</text>
+    </g>
+
+    <!-- P3: skills.rs embeds -->
+    <g transform="translate(-265, 210)">
+      <rect x="-70" y="-24" width="140" height="48" rx="8" fill="#E9F7F0" stroke="#5DCAA5" stroke-width="0.5"/>
+      <text class="node-title" x="0" y="-6" text-anchor="middle" fill="#04342C">skills.rs</text>
+      <text class="node-sub" x="0" y="10" text-anchor="middle" fill="#0F6E56">include_str! embeds</text>
+      <rect x="-15" y="28" width="30" height="16" rx="4" fill="#1D9E75"/>
+      <text class="badge-text" x="0" y="38" text-anchor="middle" dominant-baseline="central">LOW</text>
+    </g>
+
+    <!-- P3: prompt.rs embeds -->
+    <g transform="translate(265, 210)">
+      <rect x="-70" y="-24" width="140" height="48" rx="8" fill="#E9F7F0" stroke="#5DCAA5" stroke-width="0.5"/>
+      <text class="node-title" x="0" y="-6" text-anchor="middle" fill="#04342C">prompt.rs</text>
+      <text class="node-sub" x="0" y="10" text-anchor="middle" fill="#0F6E56">include_str! embeds</text>
+      <rect x="-15" y="28" width="30" height="16" rx="4" fill="#1D9E75"/>
+      <text class="badge-text" x="0" y="38" text-anchor="middle" dominant-baseline="central">LOW</text>
+    </g>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Section 3: Coupling inventory table                            -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+
+  <line x1="70" y1="940" x2="1330" y2="940" stroke="#e0ddd5" stroke-width="0.5"/>
+  <text class="section-title" x="70" y="970">Coupling Inventory</text>
+  <text class="section-sub" x="70" y="988">All detected source-of-truth ↔ dependent relationships</text>
+
+  <g transform="translate(70, 1006)">
+    <!-- Table header -->
+    <rect x="0" y="0" width="1260" height="26" rx="4" fill="#EEEDEE"/>
+    <text class="cell-head" x="16" y="17">#</text>
+    <text class="cell-head" x="40" y="17">Relationship</text>
+    <text class="cell-head" x="340" y="17">Mechanism</text>
+    <text class="cell-head" x="500" y="17">Guard</text>
+    <text class="cell-head" x="760" y="17">Propagation</text>
+    <text class="cell-head" x="900" y="17">Risk</text>
+
+    <!-- Row 1: CRITICAL -->
+    <rect x="0" y="30" width="1260" height="44" rx="0" fill="#FEF3EF" opacity="0.7"/>
+    <text class="cell-text" x="16" y="56" font-weight="600">1</text>
+    <text class="cell-text" x="40" y="48">defaults/skills/ → AGENTS.md</text>
+    <text class="cell-mono" x="40" y="63">Skill count: 14 vs 12</text>
+    <text class="cell-mono" x="340" y="56">manual-mirror</text>
+    <text class="cell-text" x="500" y="56">⚠ NONE</text>
+    <text class="cell-text" x="760" y="56">silent</text>
+    <rect x="900" y="44" width="64" height="18" rx="4" fill="#D85A30"/>
+    <text class="badge-text" x="932" y="55" text-anchor="middle" dominant-baseline="central">CRITICAL</text>
+
+    <!-- Row 2: CRITICAL -->
+    <rect x="0" y="78" width="1260" height="44" rx="0" fill="#FEF3EF" opacity="0.5"/>
+    <text class="cell-text" x="16" y="104" font-weight="600">2</text>
+    <text class="cell-text" x="40" y="96">defaults/skills/ → quickstart + bootstrap</text>
+    <text class="cell-mono" x="40" y="111">Skill count: 14 vs 12</text>
+    <text class="cell-mono" x="340" y="104">manual-mirror</text>
+    <text class="cell-text" x="500" y="104">⚠ NONE</text>
+    <text class="cell-text" x="760" y="104">silent</text>
+    <rect x="900" y="92" width="64" height="18" rx="4" fill="#D85A30"/>
+    <text class="badge-text" x="932" y="103" text-anchor="middle" dominant-baseline="central">CRITICAL</text>
+
+    <!-- Row 3: CRITICAL -->
+    <rect x="0" y="126" width="1260" height="44" rx="0" fill="#FEF3EF" opacity="0.7"/>
+    <text class="cell-text" x="16" y="152" font-weight="600">3</text>
+    <text class="cell-text" x="40" y="144">defaults/prompts/ → AGENTS.md</text>
+    <text class="cell-mono" x="40" y="159">Prompt count: 7 vs 6</text>
+    <text class="cell-mono" x="340" y="152">manual-mirror</text>
+    <text class="cell-text" x="500" y="152">⚠ NONE</text>
+    <text class="cell-text" x="760" y="152">silent</text>
+    <rect x="900" y="140" width="64" height="18" rx="4" fill="#D85A30"/>
+    <text class="badge-text" x="932" y="151" text-anchor="middle" dominant-baseline="central">CRITICAL</text>
+
+    <!-- Row 4: HIGH -->
+    <rect x="0" y="174" width="1260" height="44" rx="0" fill="#FDF6E9" opacity="0.5"/>
+    <text class="cell-text" x="16" y="200" font-weight="600">4</text>
+    <text class="cell-text" x="40" y="192">defaults/skills/ → crate README</text>
+    <text class="cell-mono" x="40" y="207">Lists 12 skills, missing 2</text>
+    <text class="cell-mono" x="340" y="200">manual-mirror</text>
+    <text class="cell-text" x="500" y="200">⚠ NONE</text>
+    <text class="cell-text" x="760" y="200">silent</text>
+    <rect x="900" y="188" width="44" height="18" rx="4" fill="#BA7517"/>
+    <text class="badge-text" x="922" y="199" text-anchor="middle" dominant-baseline="central">HIGH</text>
+
+    <!-- Row 5: HIGH -->
+    <rect x="0" y="222" width="1260" height="44" rx="0" fill="#FDF6E9" opacity="0.5"/>
+    <text class="cell-text" x="16" y="248" font-weight="600">5</text>
+    <text class="cell-text" x="40" y="240">Cargo.toml version → CHANGELOG</text>
+    <text class="cell-mono" x="40" y="255">Manual release notes</text>
+    <text class="cell-mono" x="340" y="248">manual-mirror</text>
+    <text class="cell-text" x="500" y="248">⚠ NONE</text>
+    <text class="cell-text" x="760" y="248">silent</text>
+    <rect x="900" y="236" width="44" height="18" rx="4" fill="#BA7517"/>
+    <text class="badge-text" x="922" y="247" text-anchor="middle" dominant-baseline="central">HIGH</text>
+
+    <!-- Row 6: HIGH -->
+    <rect x="0" y="270" width="1260" height="44" rx="0" fill="#FDF6E9" opacity="0.5"/>
+    <text class="cell-text" x="16" y="296" font-weight="600">6</text>
+    <text class="cell-text" x="40" y="288">cli.rs (clap) → cli-reference.md</text>
+    <text class="cell-mono" x="40" y="303">Flags and subcommands</text>
+    <text class="cell-mono" x="340" y="296">manual-mirror</text>
+    <text class="cell-text" x="500" y="296">⚠ NONE</text>
+    <text class="cell-text" x="760" y="296">silent</text>
+    <rect x="900" y="284" width="44" height="18" rx="4" fill="#BA7517"/>
+    <text class="badge-text" x="922" y="295" text-anchor="middle" dominant-baseline="central">HIGH</text>
+
+    <!-- Row 7: HIGH -->
+    <rect x="0" y="318" width="1260" height="44" rx="0" fill="#FDF6E9" opacity="0.5"/>
+    <text class="cell-text" x="16" y="344" font-weight="600">7</text>
+    <text class="cell-text" x="40" y="336">defaults/skills/ → skills.toml template</text>
+    <text class="cell-mono" x="40" y="351">Template doesn't list built-ins</text>
+    <text class="cell-mono" x="340" y="344">manual-mirror</text>
+    <text class="cell-text" x="500" y="344">⚠ NONE</text>
+    <text class="cell-text" x="760" y="344">silent</text>
+    <rect x="900" y="332" width="44" height="18" rx="4" fill="#BA7517"/>
+    <text class="badge-text" x="922" y="343" text-anchor="middle" dominant-baseline="central">HIGH</text>
+
+    <!-- Row 8: LOW -->
+    <rect x="0" y="366" width="1260" height="44" rx="0" fill="#E9F7F0" opacity="0.5"/>
+    <text class="cell-text" x="16" y="392" font-weight="600">8</text>
+    <text class="cell-text" x="40" y="384">skills.rs embeds → defaults/skills/</text>
+    <text class="cell-mono" x="40" y="399">include_str!/include_bytes!</text>
+    <text class="cell-mono" x="340" y="392">build-step</text>
+    <text class="cell-text" x="500" y="392">Compile error if missing</text>
+    <text class="cell-text" x="760" y="392">build-error</text>
+    <rect x="900" y="380" width="34" height="18" rx="4" fill="#1D9E75"/>
+    <text class="badge-text" x="917" y="391" text-anchor="middle" dominant-baseline="central">LOW</text>
+
+    <!-- Row 9: LOW -->
+    <rect x="0" y="414" width="1260" height="44" rx="0" fill="#E9F7F0" opacity="0.5"/>
+    <text class="cell-text" x="16" y="440" font-weight="600">9</text>
+    <text class="cell-text" x="40" y="432">prompt.rs embeds → defaults/prompts/</text>
+    <text class="cell-mono" x="40" y="447">include_str!</text>
+    <text class="cell-mono" x="340" y="440">build-step</text>
+    <text class="cell-text" x="500" y="440">Compile error if missing</text>
+    <text class="cell-text" x="760" y="440">build-error</text>
+    <rect x="900" y="428" width="34" height="18" rx="4" fill="#1D9E75"/>
+    <text class="badge-text" x="917" y="439" text-anchor="middle" dominant-baseline="central">LOW</text>
+
+    <!-- Row 10: MODERATE -->
+    <rect x="0" y="462" width="1260" height="44" rx="0" fill="#EDF4FC" opacity="0.5"/>
+    <text class="cell-text" x="16" y="488" font-weight="600">10</text>
+    <text class="cell-text" x="40" y="480">CLI commands → tests/*.rs</text>
+    <text class="cell-mono" x="40" y="495">Hardcoded output assertions</text>
+    <text class="cell-mono" x="340" y="488">test-assertion</text>
+    <text class="cell-text" x="500" y="488">CI + pre-commit</text>
+    <text class="cell-text" x="760" y="488">test-failure</text>
+    <rect x="900" y="476" width="64" height="18" rx="4" fill="#378ADD"/>
+    <text class="badge-text" x="932" y="487" text-anchor="middle" dominant-baseline="central">MODERATE</text>
+
+    <!-- Row 11: MODERATE -->
+    <rect x="0" y="510" width="1260" height="44" rx="0" fill="#EDF4FC" opacity="0.5"/>
+    <text class="cell-text" x="16" y="536" font-weight="600">11</text>
+    <text class="cell-text" x="40" y="528">release.yml paths → Cargo.toml</text>
+    <text class="cell-mono" x="40" y="543">CRATE_MANIFEST env var</text>
+    <text class="cell-mono" x="340" y="536">manual-mirror</text>
+    <text class="cell-text" x="500" y="536">CI would fail on release</text>
+    <text class="cell-text" x="760" y="536">runtime-error</text>
+    <rect x="900" y="524" width="64" height="18" rx="4" fill="#378ADD"/>
+    <text class="badge-text" x="932" y="535" text-anchor="middle" dominant-baseline="central">MODERATE</text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Section 4: Mitigations                                         -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+
+  <line x1="70" y1="1590" x2="1330" y2="1590" stroke="#e0ddd5" stroke-width="0.5"/>
+  <text class="section-title" x="70" y="1620">Top Mitigations</text>
+  <text class="section-sub" x="70" y="1638">Highest-priority actions to convert silent drift to loud failure</text>
+
+  <g transform="translate(70, 1656)">
+    <!-- Mitigation 1 -->
+    <rect x="0" y="0" width="1260" height="40" rx="6" fill="#FEF3EF" stroke="#F0997B" stroke-width="0.4"/>
+    <rect x="10" y="10" width="24" height="18" rx="4" fill="#D85A30"/>
+    <text class="badge-text" x="22" y="21" text-anchor="middle" dominant-baseline="central">P0</text>
+    <text class="fix-label" x="44" y="24">Add CI count check:</text>
+    <text class="fix-text" x="180" y="24">Script that counts skills/prompts in code and asserts doc files match. Blocks PR merge on mismatch.</text>
+
+    <!-- Mitigation 2 -->
+    <rect x="0" y="48" width="1260" height="40" rx="6" fill="#FEF3EF" stroke="#F0997B" stroke-width="0.4"/>
+    <rect x="10" y="58" width="24" height="18" rx="4" fill="#D85A30"/>
+    <text class="badge-text" x="22" y="69" text-anchor="middle" dominant-baseline="central">P0</text>
+    <text class="fix-label" x="44" y="72">Update AGENTS.md now:</text>
+    <text class="fix-text" x="190" y="72">Fix skill count 12→14, prompt count 6→7, add response-dispatch and drift-risk-map to tables.</text>
+
+    <!-- Mitigation 3 -->
+    <rect x="0" y="96" width="1260" height="40" rx="6" fill="#FDF6E9" stroke="#FAC775" stroke-width="0.4"/>
+    <rect x="10" y="106" width="24" height="18" rx="4" fill="#BA7517"/>
+    <text class="badge-text" x="22" y="117" text-anchor="middle" dominant-baseline="central">P1</text>
+    <text class="fix-label" x="44" y="120">Update crate README:</text>
+    <text class="fix-text" x="186" y="120">Expand skill table from 12 to 14 entries. Add response-dispatch and drift-risk-map.</text>
+
+    <!-- Mitigation 4 -->
+    <rect x="0" y="144" width="1260" height="40" rx="6" fill="#FDF6E9" stroke="#FAC775" stroke-width="0.4"/>
+    <rect x="10" y="154" width="24" height="18" rx="4" fill="#BA7517"/>
+    <text class="badge-text" x="22" y="165" text-anchor="middle" dominant-baseline="central">P1</text>
+    <text class="fix-label" x="44" y="168">Automate CHANGELOG:</text>
+    <text class="fix-text" x="193" y="168">Adopt release-please or cargo-release. Add CI check that top CHANGELOG header contains Cargo.toml version.</text>
+
+    <!-- Mitigation 5 -->
+    <rect x="0" y="192" width="1260" height="40" rx="6" fill="#FDF6E9" stroke="#FAC775" stroke-width="0.4"/>
+    <rect x="10" y="202" width="24" height="18" rx="4" fill="#BA7517"/>
+    <text class="badge-text" x="22" y="213" text-anchor="middle" dominant-baseline="central">P1</text>
+    <text class="fix-label" x="44" y="216">Generate CLI docs:</text>
+    <text class="fix-text" x="185" y="216">Add a test or CI step that runs `repo --help` and diffs against cli-reference.md.</text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Section 5: Footer                                              -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+
+  <line x1="70" y1="2100" x2="1330" y2="2100" stroke="#e0ddd5" stroke-width="0.5"/>
+  <text class="disclaimer" x="70" y="2117">
+    This diagram was produced by static heuristic analysis. No finding should be taken as ground truth. Validate all CRITICAL and HIGH findings manually before acting on them.
+  </text>
+</svg>

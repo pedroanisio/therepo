@@ -820,11 +820,6 @@ export type ToolDefinition = z.infer<typeof ToolDefinitionSchema>;
 /** Validated evaluation criteria set, inferred from {@link EvaluationSchema}. */
 export type Evaluation = z.infer<typeof EvaluationSchema>;
 
-/** @deprecated Since v0.3.0. Use {@link PromptDocument} instead. Removal in v0.4.0. */
-export type Prompt = PromptDocument;
-/** @deprecated Since v0.3.0. Use {@link PromptTechnique} instead. Removal in v0.4.0. */
-export type Technique = PromptTechnique;
-
 // ── § 9  JSON Schema Export — interop with non-TypeScript tooling ──
 
 /**
@@ -1168,10 +1163,5 @@ export function parseCallSpec(input: unknown): CallSpec {
 export function safeParseCallSpec(input: unknown) {
   return CallSpecSchema.safeParse(input);
 }
-
-/** @deprecated Since v0.3.0. Use {@link parsePromptDocument} instead. Removal in v0.4.0. */
-export const parsePrompt = parsePromptDocument;
-/** @deprecated Since v0.3.0. Use {@link safeParsePromptDocument} instead. Removal in v0.4.0. */
-export const safeParsePrompt = safeParsePromptDocument;
 
 // Changelog and migration guide: see docs/prompt-schema.md

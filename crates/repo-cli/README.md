@@ -64,6 +64,11 @@ repo docs designs                 # List architecture/design documents
 repo docs adrs                    # List ADRs
 repo docs references              # List reference documents (alias: refs)
 repo docs plans --status draft    # Filter by status
+repo docs plans --sort date       # Sort by date, status, title, or progress
+repo docs plans --limit 5         # Limit results
+repo docs plans --details all     # Expand phase details (none, incomplete, all)
+repo docs plans --interactive     # Choose a document interactively
+repo docs plans myplan            # Show details for a specific plan by query
 ```
 
 Documents are markdown files with YAML frontmatter:
@@ -90,6 +95,7 @@ repo health --verbose         # Also show tools that are not installed
 repo health --check-updates   # Query registries for newer versions
 repo health init              # Create a blank .repo/health.toml template
 repo health export            # Snapshot current environment into .repo/health.toml
+repo health fix               # Auto-fix failed checks that have a fix_cmd
 ```
 
 **What it checks:**
@@ -120,15 +126,18 @@ repo skills init              # Create .repo/skills.toml + copy built-in skills,
 repo skills export            # Snapshot installed skills into .repo/skills.toml
 repo skills sync              # Merge installed skills into config (keeps your edits)
 repo skills install           # Install missing skills via npx skills add
+repo skills fix               # Remove unfixable entries from .repo/skills.toml
+repo skills deploy            # Deploy built-in skills to ~/.agents/skills/
+repo skills deploy --force    # Overwrite already-installed skills
 ```
 
 **`init` copies built-in assets** into `.repo/`:
 
 | Directory | Contents |
 |-----------|----------|
-| `.repo/skills/` | Built-in skill definitions (12 skills: tsdoc-voice, mental-model, adv-planning, purpose-md, testing-standards, incremental-validation, review-plan, prompt-builder, behavioral-layer, doc-hygiene, cli-ux-patterns, codebase-requirements) |
-| `.repo/references/` | Reference documents (tsdoc-spec, mental-model-schema, plan-schema-fields) |
-| `.repo/schemas/` | Formal schemas (plan-schema.ts) |
+| `.repo/skills/` | Built-in skill definitions (17 skills: tsdoc-voice, mental-model, adv-planning, purpose-md, testing-standards, incremental-validation, review-plan, prompt-builder, behavioral-layer, doc-hygiene, cli-ux-patterns, anti-slop, doc-patch, conceptual-codebase-analysis, codebase-requirements, response-dispatch, drift-risk-map) |
+| `.repo/references/` | Reference documents (8: tsdoc-spec, mental-model-schema, plan-schema-fields, schema-reference, trait-spec, detection-patterns, report-template, sync-checks) |
+| `.repo/schemas/` | Formal schemas (2: plan-schema.ts, prompt-schema.ts) |
 
 Existing files are never overwritten — run `init` again safely after updates.
 
@@ -144,6 +153,8 @@ List all discovered plugins (built-in and external).
 
 ```bash
 repo plugins                  # or: repo plugins list
+repo plugins info docs        # Show details about a specific plugin
+repo plugins --json           # Machine-readable plugin listing
 ```
 
 ## Directory structure

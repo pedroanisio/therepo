@@ -106,6 +106,7 @@ The current built-in commands are:
 - `prompt` for listing and materializing prompt snippets
 - `ulid` for generating valid ULIDs
 - `plugins` for listing built-in and external plugins
+- `completions` for generating shell completion scripts
 
 See the full command reference in [`docs/cli-reference.md`](./docs/cli-reference.md).
 

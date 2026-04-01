@@ -142,6 +142,20 @@ const BUILTIN_SKILL_ZIPS: &[BinaryAsset] = &[
         bytes: include_bytes!("../../../defaults/skills/cli-ux-patterns.skill"),
     },
     BinaryAsset {
+        filename: "anti-slop.skill",
+        bytes: include_bytes!("../../../defaults/skills/anti-slop.skill"),
+    },
+    BinaryAsset {
+        filename: "doc-patch.skill",
+        bytes: include_bytes!("../../../defaults/skills/doc-patch.skill"),
+    },
+    BinaryAsset {
+        filename: "conceptual-codebase-analysis.skill",
+        bytes: include_bytes!(
+            "../../../defaults/skills/conceptual-codebase-analysis.skill"
+        ),
+    },
+    BinaryAsset {
         filename: "codebase-requirements.skill",
         bytes: include_bytes!("../../../defaults/skills/codebase-requirements.skill"),
     },
@@ -417,6 +431,35 @@ const ALL_SKILL_BUNDLES: &[SkillBundle] = &[
             ),
         },
         // ZIP already contains SKILL.md + references/ — no extra arrays needed.
+        references: &[],
+        scripts: &[],
+        examples: &[],
+    },
+    SkillBundle {
+        source: SkillSource::Zip {
+            filename: "anti-slop.skill",
+            bytes: include_bytes!("../../../defaults/skills/anti-slop.skill"),
+        },
+        references: &[],
+        scripts: &[],
+        examples: &[],
+    },
+    SkillBundle {
+        source: SkillSource::Zip {
+            filename: "doc-patch.skill",
+            bytes: include_bytes!("../../../defaults/skills/doc-patch.skill"),
+        },
+        references: &[],
+        scripts: &[],
+        examples: &[],
+    },
+    SkillBundle {
+        source: SkillSource::Zip {
+            filename: "conceptual-codebase-analysis.skill",
+            bytes: include_bytes!(
+                "../../../defaults/skills/conceptual-codebase-analysis.skill"
+            ),
+        },
         references: &[],
         scripts: &[],
         examples: &[],
@@ -2535,6 +2578,235 @@ mod tests {
             assert_eq!(
                 build_install_cmd(&entry).as_deref(),
                 Some("npx skills add owner/repo -y")
+            );
+        }
+    }
+
+    /// Regression tests that catch documentation drift when built-in
+    /// skills are added or removed. These exist because the skill count
+    /// is manually mirrored in several documentation files.
+    mod asset_count_drift {
+        use super::*;
+
+        /// The total number of built-in skills must equal the sum of
+        /// plain-text skills and ZIP-packaged skills, and must match
+        /// the `ALL_SKILL_BUNDLES` deploy array.
+        #[test]
+        fn builtin_skill_count_is_consistent() {
+            let plain_count = BUILTIN_SKILLS.len();
+            let zip_count = BUILTIN_SKILL_ZIPS.len();
+            let bundle_count = ALL_SKILL_BUNDLES.len();
+            assert_eq!(
+                plain_count + zip_count,
+                bundle_count,
+                "BUILTIN_SKILLS ({plain_count}) + BUILTIN_SKILL_ZIPS ({zip_count}) \
+                 must equal ALL_SKILL_BUNDLES ({bundle_count})"
+            );
+        }
+
+        /// The total skill count stated in documentation files must
+        /// match the actual number of built-in skills in the code.
+        /// If this test fails, update the stale count in the named file.
+        #[test]
+        fn skill_count_matches_agents_md() {
+            let expected = ALL_SKILL_BUNDLES.len();
+            let agents_md = include_str!("../../../../../AGENTS.md");
+            let needle = format!("{expected} built-in skills");
+            assert!(
+                agents_md.contains(&needle),
+                "AGENTS.md does not contain \"{needle}\". \
+                 Update the skill count in AGENTS.md to match the \
+                 {expected} skills defined in ALL_SKILL_BUNDLES."
+            );
+        }
+
+        #[test]
+        fn skill_count_matches_quickstart() {
+            let expected = ALL_SKILL_BUNDLES.len();
+            let doc = include_str!("../../../../../docs/quickstart.md");
+            let needle = format!("all {expected} built-in skills");
+            assert!(
+                doc.contains(&needle),
+                "docs/quickstart.md does not contain \"{needle}\". \
+                 Update the skill count to {expected}."
+            );
+        }
+
+        #[test]
+        fn skill_count_matches_bootstrap_guide() {
+            let expected = ALL_SKILL_BUNDLES.len();
+            let doc =
+                include_str!("../../../../../docs/how-to-bootstrap-repo-metadata.md");
+            let needle = format!("all {expected} built-in skills");
+            assert!(
+                doc.contains(&needle),
+                "docs/how-to-bootstrap-repo-metadata.md does not contain \
+                 \"{needle}\". Update the skill count to {expected}."
+            );
+        }
+
+        #[test]
+        fn skill_count_matches_crate_readme() {
+            let expected = ALL_SKILL_BUNDLES.len();
+            let doc = include_str!("../../../README.md");
+            let needle = format!("{expected} skills:");
+            assert!(
+                doc.contains(&needle),
+                "crates/repo-cli/README.md does not contain \"{needle}\". \
+                 Update the skill count to {expected}."
+            );
+        }
+
+        #[test]
+        fn crate_readme_documents_health_fix() {
+            let doc = include_str!("../../../README.md");
+            assert!(
+                doc.contains("repo health fix"),
+                "crates/repo-cli/README.md does not document `repo health fix`. \
+                 Add it to the health command section."
+            );
+        }
+
+        #[test]
+        fn crate_readme_documents_skills_deploy() {
+            let doc = include_str!("../../../README.md");
+            assert!(
+                doc.contains("repo skills deploy"),
+                "crates/repo-cli/README.md does not document `repo skills deploy`. \
+                 Add it to the skills command section."
+            );
+        }
+
+        #[test]
+        fn crate_readme_documents_plugins_info() {
+            let doc = include_str!("../../../README.md");
+            assert!(
+                doc.contains("repo plugins info"),
+                "crates/repo-cli/README.md does not document `repo plugins info`. \
+                 Add it to the plugins command section."
+            );
+        }
+
+        #[test]
+        fn cli_reference_documents_docs_sort_flag() {
+            let doc = include_str!("../../../../../docs/cli-reference.md");
+            assert!(
+                doc.contains("--sort"),
+                "docs/cli-reference.md does not document the --sort flag. \
+                 Add it to the docs command section."
+            );
+        }
+
+        #[test]
+        fn cli_reference_documents_docs_limit_flag() {
+            let doc = include_str!("../../../../../docs/cli-reference.md");
+            assert!(
+                doc.contains("--limit"),
+                "docs/cli-reference.md does not document the --limit flag. \
+                 Add it to the docs command section."
+            );
+        }
+
+        #[test]
+        fn no_deprecated_items_past_current_version() {
+            let schema =
+                include_str!("../../../defaults/schemas/01KM1YWRFYBBT98WV14WXDKJM4-prompt-schema.ts");
+            let version = env!("CARGO_PKG_VERSION");
+            let needle = format!("Removal in v{version}");
+            assert!(
+                !schema.contains(&needle),
+                "prompt-schema.ts still contains items marked \
+                 \"{needle}\" — remove them or update the deadline."
+            );
+        }
+
+        #[test]
+        fn changelog_contains_cargo_version() {
+            let changelog = include_str!("../../../../../CHANGELOG.md");
+            let version = env!("CARGO_PKG_VERSION");
+            assert!(
+                changelog.contains(version),
+                "CHANGELOG.md does not contain version {version} from Cargo.toml. \
+                 Add a changelog entry for the current version."
+            );
+        }
+
+        #[test]
+        fn agents_md_json_schema_matches_overview_fields() {
+            let agents_md = include_str!("../../../../../AGENTS.md");
+            for key in ["builtin_plugins", "external_plugins", "config_present"] {
+                assert!(
+                    agents_md.contains(key),
+                    "AGENTS.md JSON output shape is missing field \"{key}\". \
+                     Update the `repo --json` example to match `OverviewJson`."
+                );
+            }
+        }
+
+        #[test]
+        fn agents_md_does_not_claim_config_auto_created() {
+            let agents_md = include_str!("../../../../../AGENTS.md");
+            assert!(
+                !agents_md.contains("config.toml")
+                    || !agents_md.contains("(auto-created)")
+                    || !agents_md.contains("config.toml           # Repository configuration (auto-created)"),
+                "AGENTS.md claims config.toml is auto-created, but no \
+                 command creates it automatically. Update the bootstrap tree."
+            );
+        }
+
+        #[test]
+        fn agents_md_plugin_count_matches_discover_plugins() {
+            let agents_md = include_str!("../../../../../AGENTS.md");
+            assert!(
+                agents_md.contains("5 built-in plugins"),
+                "AGENTS.md plugin count does not match discover_plugins() \
+                 (5 built-in: docs, health, skills, prompt, ulid). \
+                 Update the count."
+            );
+        }
+
+        #[test]
+        fn readme_lists_completions_command() {
+            let readme = include_str!("../../../../../README.md");
+            assert!(
+                readme.contains("completions"),
+                "README.md command surface does not list `completions`. \
+                 Add it to the built-in command list."
+            );
+        }
+
+        #[test]
+        fn quickstart_lists_completions_command() {
+            let doc = include_str!("../../../../../docs/quickstart.md");
+            assert!(
+                doc.contains("completions"),
+                "docs/quickstart.md command list does not include `completions`. \
+                 Add it."
+            );
+        }
+
+        #[test]
+        fn crate_readme_reference_count_matches_code() {
+            let expected = BUILTIN_REFERENCES.len();
+            let doc = include_str!("../../../README.md");
+            let needle = format!("({expected}:");
+            assert!(
+                doc.contains(&needle),
+                "crates/repo-cli/README.md references table does not show \
+                 {expected} references. Update the `.repo/references/` row."
+            );
+        }
+
+        #[test]
+        fn crate_readme_schema_count_matches_code() {
+            let expected = BUILTIN_SCHEMAS.len();
+            let doc = include_str!("../../../README.md");
+            let needle = format!("({expected}:");
+            assert!(
+                doc.contains(&needle),
+                "crates/repo-cli/README.md schemas table does not show \
+                 {expected} schemas. Update the `.repo/schemas/` row."
             );
         }
     }
