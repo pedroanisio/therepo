@@ -85,6 +85,7 @@ repo health [OPTIONS] [COMMAND]
 
 - `init`
 - `export`
+- `fix`
 
 ### Command-Specific Options
 
@@ -97,6 +98,8 @@ repo health [OPTIONS] [COMMAND]
 - without that file, the command performs a best-effort scan
 - `--json` returns a structured report including sections, check status, details, and recommendations
 - update checks may query external registries and tooling
+- custom checks in `.repo/health.toml` can define a `fix_cmd` field; `repo health fix` runs these commands for any failing checks
+- `fix_cmd` values starting with `builtin:` are handled by the CLI itself (e.g. `builtin:copy-doc CLAUDE.md` copies the embedded template)
 
 ### Examples
 
@@ -106,6 +109,7 @@ repo health --verbose
 repo health --check-updates --json
 repo health init
 repo health export
+repo health fix
 ```
 
 ## `repo skills`

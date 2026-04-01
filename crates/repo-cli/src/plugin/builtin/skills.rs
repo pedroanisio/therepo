@@ -37,6 +37,30 @@ const BUILTIN_SKILLS: &[DefaultAsset] = &[
         ),
     },
     DefaultAsset {
+        filename: "01KM1BKXK7ST4DT8P6YC1BTMRD-incremental-validation.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM1BKXK7ST4DT8P6YC1BTMRD-incremental-validation.md"
+        ),
+    },
+    DefaultAsset {
+        filename: "01KM1BVKWT984AB0A4WPZRWWGX-review-plan.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM1BVKWT984AB0A4WPZRWWGX-review-plan.md"
+        ),
+    },
+    DefaultAsset {
+        filename: "01KM1YWRFYBBT98WV14WXDKJM4-prompt-builder.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM1YWRFYBBT98WV14WXDKJM4-prompt-builder.md"
+        ),
+    },
+    DefaultAsset {
+        filename: "01KM1Z6WK23PJQJ5PM9E9B07BC-behavioral-layer.md",
+        content: include_str!(
+            "../../../defaults/skills/01KM1Z6WK23PJQJ5PM9E9B07BC-behavioral-layer.md"
+        ),
+    },
+    DefaultAsset {
         filename: "01KM23VWVQWH62NBFF0TTFWVXR-doc-hygiene.md",
         content: include_str!(
             "../../../defaults/skills/01KM23VWVQWH62NBFF0TTFWVXR-doc-hygiene.md"
@@ -76,6 +100,18 @@ const BUILTIN_REFERENCES: &[DefaultAsset] = &[
         ),
     },
     DefaultAsset {
+        filename: "01KM1YWRFYBBT98WV14WXDKJM4-schema-reference.md",
+        content: include_str!(
+            "../../../defaults/references/01KM1YWRFYBBT98WV14WXDKJM4-schema-reference.md"
+        ),
+    },
+    DefaultAsset {
+        filename: "01KM1Z6WK23PJQJ5PM9E9B07BC-trait-spec.md",
+        content: include_str!(
+            "../../../defaults/references/01KM1Z6WK23PJQJ5PM9E9B07BC-trait-spec.md"
+        ),
+    },
+    DefaultAsset {
         filename: "01KM23VWVQWH62NBFF0TTFWVXR-report-template.md",
         content: include_str!(
             "../../../defaults/references/01KM23VWVQWH62NBFF0TTFWVXR-report-template.md"
@@ -83,10 +119,33 @@ const BUILTIN_REFERENCES: &[DefaultAsset] = &[
     },
 ];
 
-const BUILTIN_SCHEMAS: &[DefaultAsset] = &[DefaultAsset {
-    filename: "01KM18ZD23GC3TDVN7W0GX2000-plan-schema.ts",
-    content: include_str!("../../../defaults/schemas/01KM18ZD23GC3TDVN7W0GX2000-plan-schema.ts"),
-}];
+const BUILTIN_SCHEMAS: &[DefaultAsset] = &[
+    DefaultAsset {
+        filename: "01KM18ZD23GC3TDVN7W0GX2000-plan-schema.ts",
+        content: include_str!("../../../defaults/schemas/01KM18ZD23GC3TDVN7W0GX2000-plan-schema.ts"),
+    },
+    DefaultAsset {
+        filename: "01KM1YWRFYBBT98WV14WXDKJM4-prompt-schema.ts",
+        content: include_str!("../../../defaults/schemas/01KM1YWRFYBBT98WV14WXDKJM4-prompt-schema.ts"),
+    },
+];
+
+struct BinaryAsset {
+    filename: &'static str,
+    bytes: &'static [u8],
+}
+
+/// ZIP-packaged skills extracted into `.repo/skills/<name>/` by `skills init`.
+const BUILTIN_SKILL_ZIPS: &[BinaryAsset] = &[
+    BinaryAsset {
+        filename: "cli-ux-patterns.skill",
+        bytes: include_bytes!("../../../defaults/skills/cli-ux-patterns.skill"),
+    },
+    BinaryAsset {
+        filename: "codebase-requirements.skill",
+        bytes: include_bytes!("../../../defaults/skills/codebase-requirements.skill"),
+    },
+];
 
 // ── Skill bundle types ───────────────────────────────────────────────────────
 
@@ -134,7 +193,7 @@ struct SkillBundle {
     examples: &'static [BundledFile],
 }
 
-// All 10 built-in skills with their associated supporting files.
+// All 12 built-in skills with their associated supporting files.
 // Used by `repo skills deploy` to produce self-contained skill directories,
 // matching the pattern of e.g. `rust-best-practices` (SKILL.md + references/).
 const ALL_SKILL_BUNDLES: &[SkillBundle] = &[
@@ -583,7 +642,7 @@ in the project's .agents/skills/ directory.
 Run `repo skills fix` to automatically remove entries that cannot be installed
 (missing source field or skill not found at the declared source).
 
-`repo skills deploy` writes all 10 built-in skills directly into ~/.agents/skills/
+`repo skills deploy` writes all 12 built-in skills directly into ~/.agents/skills/
 and creates agent-specific symlinks (e.g. ~/.claude/skills/) for every detected
 agent. No external registry required — the skill content is embedded in the binary.
 
@@ -594,23 +653,23 @@ agent. No external registry required — the skill content is embedded in the bi
 
 // ── init ────────────────────────────────────────────────────────────
 
-fn cmd_init(repo_root: &Path) -> i32 {
-    let repo_dir = repo_root.join(".repo");
-
-    // 1. Write skills.toml template.
+fn write_skills_template(repo_dir: &Path) -> Result<(), ()> {
     let toml_path = repo_dir.join("skills.toml");
     if toml_path.exists() {
         println!("  {} .repo/skills.toml already exists", dim("--"));
-    } else {
-        let template = include_str!("../../../defaults/skills.toml");
-        if let Err(e) = std::fs::write(&toml_path, template) {
-            eprintln!("Error writing {}: {e}", toml_path.display());
-            return 1;
-        }
-        println!("  {} wrote .repo/skills.toml", green("ok"));
+        return Ok(());
     }
 
-    // 2. Write built-in skills, references, and schemas.
+    let template = include_str!("../../../defaults/skills.toml");
+    if let Err(e) = std::fs::write(&toml_path, template) {
+        eprintln!("Error writing {}: {e}", toml_path.display());
+        return Err(());
+    }
+    println!("  {} wrote .repo/skills.toml", green("ok"));
+    Ok(())
+}
+
+fn write_builtin_asset_groups(repo_dir: &Path) -> Result<(), ()> {
     let groups: &[(&str, &[DefaultAsset])] = &[
         ("skills", BUILTIN_SKILLS),
         ("references", BUILTIN_REFERENCES),
@@ -621,7 +680,7 @@ fn cmd_init(repo_root: &Path) -> i32 {
         let dir = repo_dir.join(dir_name);
         if let Err(e) = std::fs::create_dir_all(&dir) {
             eprintln!("Failed to create {}: {e}", dir.display());
-            return 1;
+            return Err(());
         }
 
         let mut written = 0u32;
@@ -651,6 +710,108 @@ fn cmd_init(repo_root: &Path) -> i32 {
             );
         }
     }
+
+    Ok(())
+}
+
+fn bundled_skill_name(asset: &BinaryAsset) -> String {
+    let cursor = std::io::Cursor::new(asset.bytes);
+    let Ok(mut archive) = zip::ZipArchive::new(cursor) else {
+        return asset.filename.trim_end_matches(".skill").to_owned();
+    };
+
+    let Ok(mut skill_md) = archive.by_name("SKILL.md") else {
+        return asset.filename.trim_end_matches(".skill").to_owned();
+    };
+
+    let mut content = String::new();
+    if std::io::Read::read_to_string(&mut skill_md, &mut content).is_err() {
+        return asset.filename.trim_end_matches(".skill").to_owned();
+    }
+
+    parse_skill_name(&content)
+        .unwrap_or(asset.filename.trim_end_matches(".skill"))
+        .to_owned()
+}
+
+fn extract_bundled_skill_zips(skills_dir: &Path) {
+    let mut zip_written = 0u32;
+    let mut zip_skipped = 0u32;
+
+    for asset in BUILTIN_SKILL_ZIPS {
+        let cursor = std::io::Cursor::new(asset.bytes);
+        let mut archive = match zip::ZipArchive::new(cursor) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("  {} invalid ZIP in {}: {e}", red("!!"), asset.filename);
+                continue;
+            }
+        };
+
+        let skill_name = bundled_skill_name(asset);
+        let dest_dir = skills_dir.join(&skill_name);
+        if dest_dir.join("SKILL.md").exists() {
+            zip_skipped += 1;
+            continue;
+        }
+
+        if let Err(e) = std::fs::create_dir_all(&dest_dir) {
+            eprintln!("  {} mkdir {}: {e}", red("!!"), dest_dir.display());
+            continue;
+        }
+
+        let mut ok = true;
+        for i in 0..archive.len() {
+            let Ok(mut entry) = archive.by_index(i) else {
+                continue;
+            };
+            if entry.is_dir() {
+                continue;
+            }
+            let Some(entry_path) = entry.enclosed_name() else {
+                continue;
+            };
+            let entry_path = entry_path.clone();
+            let dest = dest_dir.join(&entry_path);
+            if let Some(parent) = dest.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let mut content = Vec::new();
+            if std::io::Read::read_to_end(&mut entry, &mut content).is_err() {
+                ok = false;
+                continue;
+            }
+            if std::fs::write(&dest, &content).is_err() {
+                ok = false;
+            }
+        }
+
+        if ok {
+            zip_written += 1;
+        }
+    }
+
+    if zip_written > 0 {
+        println!("  {} extracted {zip_written} bundled skills", green("ok"));
+    }
+    if zip_skipped > 0 {
+        println!(
+            "  {} {zip_skipped} bundled skills already existed (not overwritten)",
+            dim("--"),
+        );
+    }
+}
+
+fn cmd_init(repo_root: &Path) -> i32 {
+    let repo_dir = repo_root.join(".repo");
+
+    if write_skills_template(&repo_dir).is_err() {
+        return 1;
+    }
+    if write_builtin_asset_groups(&repo_dir).is_err() {
+        return 1;
+    }
+    extract_bundled_skill_zips(&repo_dir.join("skills"));
 
     println!();
     println!("  Edit .repo/skills.toml to declare required external skills.");

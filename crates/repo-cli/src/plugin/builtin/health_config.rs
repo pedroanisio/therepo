@@ -35,6 +35,11 @@ pub struct CustomCheck {
 
     /// Hint shown on failure (e.g. how to fix).
     pub hint: Option<String>,
+
+    /// Command to run to auto-fix the issue.
+    /// Shell commands are run via `sh -c`. Values starting with `builtin:`
+    /// are handled internally by the CLI (e.g. `builtin:copy-doc CLAUDE.md`).
+    pub fix_cmd: Option<String>,
 }
 
 fn default_error() -> String {

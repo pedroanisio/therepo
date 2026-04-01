@@ -75,6 +75,31 @@ allowed_runtimes = []
 #   description  = "env file exists"    # shown in health output
 #   severity     = "error"              # "error" (fails check) or "warning"
 #   hint         = "cp .env.example .env" # shown on failure
+#   fix_cmd      = "cp .env.example .env" # auto-fix command for `repo health fix`
+#
+# fix_cmd values starting with "builtin:" are handled by the CLI:
+#   builtin:copy-doc CLAUDE.md          # copy embedded CLAUDE.md template
+#   builtin:copy-doc DISCLAIMER.md      # copy embedded DISCLAIMER.md template
+
+[checks.claude-md]
+command = "test -f CLAUDE.md"
+description = "CLAUDE.md exists at repo root"
+severity = "warning"
+hint = "Run `repo health fix` to copy the default template, then customize it"
+fix_cmd = "builtin:copy-doc CLAUDE.md"
+
+[checks.disclaimer-md]
+command = "test -f DISCLAIMER.md"
+description = "DISCLAIMER.md exists at repo root"
+severity = "warning"
+hint = "Run `repo health fix` to copy the default template, then customize it"
+fix_cmd = "builtin:copy-doc DISCLAIMER.md"
+
+[checks.readme-disclaimer-ref]
+command = "grep -q 'DISCLAIMER.md' README.md 2>/dev/null"
+description = "README.md references DISCLAIMER.md"
+severity = "warning"
+hint = "Add a Disclaimer section to README.md that references DISCLAIMER.md (required by CLAUDE.md)"
 
 # [checks.env-file]
 # command = "test -f .env"

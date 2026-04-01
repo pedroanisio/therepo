@@ -16,7 +16,7 @@ members = ["cargo:crates/repo-cli"]
 
 [package]
 name = "therepo"
-version = "0.1.0"
+version = "0.4.0"
 description = "General-purpose repository maintenance CLI with plugin system"
 homepage = "https://github.com/pedroanisio/therepo"
 repository = "https://github.com/pedroanisio/therepo"

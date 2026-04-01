@@ -21,6 +21,13 @@ pub fn run(cmd: &HealthArgs, json: bool) -> i32 {
             }
             args
         }
+        Some(HealthCommand::Fix) => {
+            let mut args = vec!["fix".to_string()];
+            if json {
+                args.push("--json".to_string());
+            }
+            args
+        }
         None => {
             let mut args = Vec::new();
             if cmd.verbose {

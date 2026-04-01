@@ -56,6 +56,7 @@ pub fn run(repo_root: &Path, args: &[&str]) -> i32 {
     match subcommand {
         Some("init") => cmd_init(repo_root, json),
         Some("export") => cmd_export(repo_root, json),
+        Some("fix") => cmd_fix(repo_root, json),
         Some(other) => {
             eprintln!("Unknown health subcommand: {other}");
             eprintln!("Run `repo health --help` for usage.");
@@ -163,6 +164,174 @@ fn cmd_export(repo_root: &Path, json: bool) -> i32 {
         print!("{content}");
     }
     0
+}
+
+// ── fix: auto-fix failed custom checks ─────────────────────────────
+
+#[derive(Debug, Serialize)]
+struct HealthFixRecord {
+    name: String,
+    status: String,
+    detail: String,
+}
+
+#[derive(Debug, Serialize)]
+struct HealthFixReport {
+    fixed: u32,
+    skipped: u32,
+    failed: u32,
+    checks: Vec<HealthFixRecord>,
+}
+
+fn cmd_fix(repo_root: &Path, json: bool) -> i32 {
+    let health_cfg = HealthConfig::load(repo_root);
+
+    let cfg = match health_cfg {
+        Some(ref c) if !c.checks.is_empty() => c,
+        _ => {
+            if json {
+                let report = HealthFixReport {
+                    fixed: 0,
+                    skipped: 0,
+                    failed: 0,
+                    checks: Vec::new(),
+                };
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+                );
+            } else {
+                println!("  No custom checks with fix_cmd found in .repo/health.toml");
+            }
+            return 0;
+        }
+    };
+
+    let mut fixed = 0u32;
+    let mut skipped = 0u32;
+    let mut failed = 0u32;
+    let mut records = Vec::new();
+
+    for (name, check) in &cfg.checks {
+        // Run the check first — only fix if it fails.
+        let output = Command::new("sh").arg("-c").arg(&check.command).output();
+        let passes = matches!(&output, Ok(out) if out.status.success());
+
+        if passes {
+            skipped += 1;
+            records.push(HealthFixRecord {
+                name: name.clone(),
+                status: "ok".into(),
+                detail: "check already passes".into(),
+            });
+            continue;
+        }
+
+        let Some(fix_cmd) = &check.fix_cmd else {
+            skipped += 1;
+            records.push(HealthFixRecord {
+                name: name.clone(),
+                status: "skip".into(),
+                detail: "no fix_cmd defined".into(),
+            });
+            continue;
+        };
+
+        let result = if let Some(builtin_arg) = fix_cmd.strip_prefix("builtin:") {
+            run_builtin_fix(repo_root, builtin_arg.trim())
+        } else {
+            run_shell_fix(repo_root, fix_cmd)
+        };
+
+        match result {
+            Ok(msg) => {
+                fixed += 1;
+                records.push(HealthFixRecord {
+                    name: name.clone(),
+                    status: "fixed".into(),
+                    detail: msg,
+                });
+                if !json {
+                    println!("  {} {name}: {}", green("ok"), records.last().unwrap().detail);
+                }
+            }
+            Err(msg) => {
+                failed += 1;
+                records.push(HealthFixRecord {
+                    name: name.clone(),
+                    status: "error".into(),
+                    detail: msg.clone(),
+                });
+                if !json {
+                    eprintln!("  {} {name}: {msg}", red("!!"));
+                }
+            }
+        }
+    }
+
+    if json {
+        let report = HealthFixReport {
+            fixed,
+            skipped,
+            failed,
+            checks: records,
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).unwrap_or_else(|_| "{}".to_string())
+        );
+    } else if fixed == 0 && failed == 0 {
+        println!("  Nothing to fix — all checks pass or have no fix_cmd.");
+    } else {
+        println!();
+        println!("  {fixed} fixed, {skipped} skipped, {failed} failed");
+    }
+
+    i32::from(failed > 0)
+}
+
+fn run_builtin_fix(repo_root: &Path, arg: &str) -> Result<String, String> {
+    let parts: Vec<&str> = arg.splitn(2, ' ').collect();
+    match parts.first().copied() {
+        Some("copy-doc") => {
+            let filename = parts
+                .get(1)
+                .ok_or_else(|| "builtin:copy-doc requires a filename".to_string())?;
+            let content = match *filename {
+                "CLAUDE.md" => include_str!("../../../defaults/docs/CLAUDE.md"),
+                "DISCLAIMER.md" => include_str!("../../../defaults/docs/DISCLAIMER.md"),
+                other => return Err(format!("unknown built-in doc: {other}")),
+            };
+            let target = repo_root.join(filename);
+            if target.exists() {
+                return Err(format!("{filename} already exists (not overwriting)"));
+            }
+            std::fs::write(&target, content)
+                .map_err(|e| format!("failed to write {filename}: {e}"))?;
+            Ok(format!("wrote {filename}"))
+        }
+        Some(other) => Err(format!("unknown builtin command: {other}")),
+        None => Err("empty builtin command".to_string()),
+    }
+}
+
+fn run_shell_fix(repo_root: &Path, cmd: &str) -> Result<String, String> {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .current_dir(repo_root)
+        .output()
+        .map_err(|e| format!("failed to run fix: {e}"))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let msg = stdout.trim().lines().next().unwrap_or("done");
+        Ok(msg.to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let msg = stderr.trim().lines().next().unwrap_or("fix command failed");
+        Err(msg.to_string())
+    }
 }
 
 // ── check: main health check ────────────────────────────────────────
@@ -742,6 +911,7 @@ USAGE:
 COMMANDS:
     init        Create a blank .repo/health.toml template
     export      Snapshot current environment into .repo/health.toml
+    fix         Auto-fix failed custom checks that have a fix_cmd
 
 OPTIONS:
     -u, --check-updates  Check for available updates (queries package registries)
@@ -756,7 +926,13 @@ privilege escalation method).
 Without health.toml, it performs a best-effort scan of common tools.
 
 With --check-updates, queries npm registry, rustup, etc. to detect
-newer versions. Requires network access."
+newer versions. Requires network access.
+
+Custom checks in health.toml can define a fix_cmd field. When a check
+fails, `repo health fix` runs its fix_cmd to resolve the issue.
+Values starting with `builtin:` are handled by the CLI itself:
+  builtin:copy-doc CLAUDE.md      Copy the default CLAUDE.md template
+  builtin:copy-doc DISCLAIMER.md  Copy the default DISCLAIMER.md template"
     );
 }
 

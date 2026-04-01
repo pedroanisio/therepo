@@ -4,11 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project is intended to follow Semantic Versioning.
 
-## [Unreleased]
+## [0.4.0] - 2026-04-01
 
 ### Added
 
-- No unreleased changes yet.
+- `repo health fix` subcommand that auto-fixes failed custom checks with a `fix_cmd` field
+- `fix_cmd` field on custom health checks, supporting shell commands and `builtin:` handlers
+- embedded CLAUDE.md and DISCLAIMER.md seed templates under `defaults/docs/`, copyable via `builtin:copy-doc`
+- default health checks for CLAUDE.md, DISCLAIMER.md, and README disclaimer reference in the `health init` template
+- `AGENTS.md` — complete `repo` CLI reference for AI agents, wired into `CLAUDE.md` reading order and `README.md` documentation map
+- `PURPOSE.md` — project purpose document following the Golden Circle framework
+- `repo skills init` now copies all 12 built-in skills (was 6), all 8 references (was 6), and both schemas (was 1)
+- ZIP-packaged skill extraction in `repo skills init` for `cli-ux-patterns` and `codebase-requirements`
+- 6 new `progress.rs` unit tests covering finish-with-state, drop cleanup, double-finish safety, and is_enabled
+
+### Fixed
+
+- coverage threshold default in `scripts/check-coverage.sh` changed from 75 to 91, matching the ADR policy
+- ADR implementation notes now document the actual variable-based script instead of a hardcoded command
+- skills count corrected from "10" to "12" in `quickstart.md`, `how-to-bootstrap-repo-metadata.md`, help text, and code comments
+- crate README skills table expanded from 5 to all 12 built-in skills
+- root README directory tree expanded to reflect actual repository layout
+- `docs/architecture.md` now documents the `commands/` dispatch layer, `progress.rs`, `lib.rs`, and `defaults/examples/` and `defaults/scripts/`
+- disclaimer references added to root README and crate README per project guidelines
 
 ## [0.3.0] - 2026-03-31
 

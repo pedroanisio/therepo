@@ -309,3 +309,151 @@ fn health_check_with_error_severity_custom_check_exits_nonzero() {
     let value: serde_json::Value = serde_json::from_str(&text).unwrap();
     assert!(value["errors"].as_u64().unwrap_or(0) > 0, "expected errors > 0 in: {text}");
 }
+
+#[test]
+fn health_fix_copies_missing_claude_md_via_builtin() {
+    let repo = TempRepo::new("health-fix-claude");
+    repo.write(
+        ".repo/health.toml",
+        "[checks.claude-md]\ncommand = \"test -f CLAUDE.md\"\ndescription = \"CLAUDE.md exists\"\nseverity = \"warning\"\nfix_cmd = \"builtin:copy-doc CLAUDE.md\"\n",
+    );
+
+    // CLAUDE.md does not exist yet
+    assert!(!repo.path().join("CLAUDE.md").exists());
+
+    let output = run_health(repo.path(), &["fix"]);
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+
+    // File should now exist
+    assert!(repo.path().join("CLAUDE.md").is_file());
+    let content = std::fs::read_to_string(repo.path().join("CLAUDE.md")).unwrap();
+    assert!(content.contains("Project Guidelines"));
+}
+
+#[test]
+fn health_fix_copies_missing_disclaimer_md_via_builtin() {
+    let repo = TempRepo::new("health-fix-disclaimer");
+    repo.write(
+        ".repo/health.toml",
+        "[checks.disclaimer-md]\ncommand = \"test -f DISCLAIMER.md\"\ndescription = \"DISCLAIMER.md exists\"\nseverity = \"warning\"\nfix_cmd = \"builtin:copy-doc DISCLAIMER.md\"\n",
+    );
+
+    assert!(!repo.path().join("DISCLAIMER.md").exists());
+
+    let output = run_health(repo.path(), &["fix"]);
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+
+    assert!(repo.path().join("DISCLAIMER.md").is_file());
+    let content = std::fs::read_to_string(repo.path().join("DISCLAIMER.md")).unwrap();
+    assert!(content.contains("disclaimer"));
+}
+
+#[test]
+fn health_fix_skips_check_that_already_passes() {
+    let repo = TempRepo::new("health-fix-skip");
+    repo.write("CLAUDE.md", "# existing\n");
+    repo.write(
+        ".repo/health.toml",
+        "[checks.claude-md]\ncommand = \"test -f CLAUDE.md\"\ndescription = \"CLAUDE.md exists\"\nseverity = \"warning\"\nfix_cmd = \"builtin:copy-doc CLAUDE.md\"\n",
+    );
+
+    let output = run_health(repo.path(), &["fix", "--json"]);
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+
+    let text = stdout(&output);
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(value["skipped"], 1);
+    assert_eq!(value["fixed"], 0);
+
+    // Original file should be unchanged
+    let content = std::fs::read_to_string(repo.path().join("CLAUDE.md")).unwrap();
+    assert_eq!(content, "# existing\n");
+}
+
+#[test]
+fn health_fix_does_not_overwrite_existing_file() {
+    let repo = TempRepo::new("health-fix-no-overwrite");
+    // Check fails (file doesn't exist), fix creates it
+    repo.write(
+        ".repo/health.toml",
+        "[checks.claude-md]\ncommand = \"test -f CLAUDE.md\"\ndescription = \"CLAUDE.md exists\"\nseverity = \"warning\"\nfix_cmd = \"builtin:copy-doc CLAUDE.md\"\n",
+    );
+
+    let output = run_health(repo.path(), &["fix"]);
+    assert!(output.status.success());
+    assert!(repo.path().join("CLAUDE.md").is_file());
+
+    // Now the check passes — make it fail by a different check, but the file exists
+    // Manually remove and recreate with custom content, then test fix won't overwrite
+    std::fs::write(repo.path().join("CLAUDE.md"), "custom content").unwrap();
+
+    // Force the check to fail by checking for a non-existent marker
+    repo.write(
+        ".repo/health.toml",
+        "[checks.claude-md]\ncommand = \"test -f CLAUDE_MISSING.md\"\ndescription = \"test\"\nseverity = \"warning\"\nfix_cmd = \"builtin:copy-doc CLAUDE.md\"\n",
+    );
+
+    let output2 = run_health(repo.path(), &["fix", "--json"]);
+    let text = stdout(&output2);
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    // Should fail because file already exists
+    assert_eq!(value["failed"], 1);
+
+    // Content should be unchanged
+    let content = std::fs::read_to_string(repo.path().join("CLAUDE.md")).unwrap();
+    assert_eq!(content, "custom content");
+}
+
+#[test]
+fn health_fix_runs_shell_fix_cmd() {
+    let repo = TempRepo::new("health-fix-shell");
+    repo.write(
+        ".repo/health.toml",
+        "[checks.marker]\ncommand = \"test -f .marker\"\ndescription = \"marker exists\"\nseverity = \"warning\"\nfix_cmd = \"touch .marker\"\n",
+    );
+
+    assert!(!repo.path().join(".marker").exists());
+
+    let output = run_health(repo.path(), &["fix", "--json"]);
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+
+    assert!(repo.path().join(".marker").is_file());
+
+    let text = stdout(&output);
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(value["fixed"], 1);
+}
+
+#[test]
+fn health_fix_without_config_reports_nothing() {
+    let repo = TempRepo::new("health-fix-empty");
+
+    let output = run_health(repo.path(), &["fix", "--json"]);
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+
+    let text = stdout(&output);
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(value["fixed"], 0);
+    assert_eq!(value["skipped"], 0);
+    assert_eq!(value["failed"], 0);
+}
+
+#[test]
+fn health_fix_skips_checks_without_fix_cmd() {
+    let repo = TempRepo::new("health-fix-no-fixcmd");
+    repo.write(
+        ".repo/health.toml",
+        "[checks.no-fix]\ncommand = \"false\"\ndescription = \"Always fails\"\nseverity = \"warning\"\n",
+    );
+
+    let output = run_health(repo.path(), &["fix", "--json"]);
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+
+    let text = stdout(&output);
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(value["skipped"], 1);
+    assert_eq!(value["fixed"], 0);
+    let checks = value["checks"].as_array().unwrap();
+    assert_eq!(checks[0]["status"], "skip");
+    assert_eq!(checks[0]["detail"], "no fix_cmd defined");
+}

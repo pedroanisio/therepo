@@ -118,6 +118,7 @@ This repository now keeps its project documentation split by purpose:
 - [`docs/cli-reference.md`](./docs/cli-reference.md): command reference
 - [`docs/architecture.md`](./docs/architecture.md): code structure and design notes
 - [`docs/releasing.md`](./docs/releasing.md): SemVer, publishing, and installer policy
+- [`AGENTS.md`](./AGENTS.md): complete `repo` CLI reference for AI agents
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md): contributor workflow for this codebase
 - [`CHANGELOG.md`](./CHANGELOG.md): notable project changes
 

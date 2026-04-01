@@ -26,7 +26,8 @@ Examples:
   repo health --verbose
   repo health --check-updates --json
   repo health init
-  repo health export";
+  repo health export
+  repo health fix";
 
 const SKILLS_EXAMPLES: &str = "\
 Examples:
@@ -168,6 +169,8 @@ pub enum HealthCommand {
     Init,
     /// Snapshot the current environment into .repo/health.toml.
     Export,
+    /// Auto-fix failed custom checks that have a `fix_cmd` defined.
+    Fix,
 }
 
 #[derive(Args, Debug)]
