@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project is intended to follow Semantic Versioning.
 
+## [0.4.0-rc-4] - 2026-04-01
+
+### Added
+
+- `anti-slop.skill`, `doc-patch.skill`, `conceptual-codebase-analysis.skill` — three new built-in ZIP skills
+- built-in skill count raised to 17 (was 14)
+- `completions` command now listed in root README and quickstart command inventories
+- `audit-repo.md` copied into checked-in `.repo/prompts/` mirror
+- 20 `asset_count_drift` regression tests that fail at compile time when documentation counts, JSON schemas, CLI flag lists, plugin counts, deprecated-item deadlines, or command inventories drift from the code
+
+### Fixed
+
+- `AGENTS.md` JSON output shape corrected from `{name, docs, plugins, config}` to `{name, builtin_plugins, external_plugins, config_present}`, matching the actual `OverviewJson` struct
+- `AGENTS.md` bootstrap tree no longer claims `.repo/config.toml` is auto-created
+- `AGENTS.md` plugin count corrected from 7 to 5 (`plugins` and `completions` are CLI commands, not registered plugins)
+- `AGENTS.md` skill count corrected from 12 to 17, prompt count from 6 to 7; `response-dispatch`, `drift-risk-map`, `anti-slop`, `doc-patch`, and `conceptual-codebase-analysis` added to skill table; `audit-repo` added to prompt table
+- `AGENTS.md` now documents `repo health fix` subcommand
+- crate README skill list expanded from 12 to 17, references from 3 to 8, schemas from 1 to 2
+- crate README now documents `skills fix`, `skills deploy`, `health fix`, `plugins info`, and `docs` listing flags (`--sort`, `--limit`, `--details`, `--interactive`, `<query>`)
+- `docs/cli-reference.md` now documents all `docs` listing flags
+- `docs/quickstart.md` and `docs/how-to-bootstrap-repo-metadata.md` skill count corrected to 17
+- removed four deprecated type aliases and function aliases from `prompt-schema.ts` that were past their v0.4.0 removal deadline
+- `defaults/skills.toml` template now documents that built-in skills are managed separately via `repo skills deploy`
+
 ## [0.4.0-rc-3] - 2026-04-01
 
 ### Added
