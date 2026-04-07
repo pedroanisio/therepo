@@ -88,7 +88,13 @@ mod tests {
 
     #[test]
     fn is_enabled_returns_false_outside_terminal() {
+        // Set TERM=dumb so `is_enabled()` returns false regardless of
+        // whether stderr is a TTY (e.g. pre-push hook in an interactive
+        // terminal).  `set_var` is unsafe since Rust 1.83 because env
+        // mutation is not thread-safe, but this test is single-threaded.
+        unsafe { std::env::set_var("TERM", "dumb") };
         assert!(!is_enabled());
+        unsafe { std::env::remove_var("TERM") };
     }
 
     #[test]
