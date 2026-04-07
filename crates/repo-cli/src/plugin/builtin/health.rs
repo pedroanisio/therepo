@@ -1565,6 +1565,563 @@ mod tests {
         }
     }
 
+    mod collect_next_steps_tests {
+        use super::*;
+
+        fn make_report(sections: Vec<HealthSection>) -> HealthReport {
+            HealthReport {
+                passed: 0,
+                warnings: 0,
+                errors: 0,
+                sections,
+            }
+        }
+
+        #[test]
+        fn returns_empty_when_all_checks_pass() {
+            let report = make_report(vec![HealthSection {
+                name: "Tools".into(),
+                checks: vec![HealthCheckRecord {
+                    name: "rustc".into(),
+                    status: "ok".into(),
+                    summary: "1.85.0".into(),
+                    details: Vec::new(),
+                    recommendation: None,
+                }],
+            }]);
+            assert!(collect_next_steps(&report).is_empty());
+        }
+
+        #[test]
+        fn collects_warnings_and_errors() {
+            let report = make_report(vec![HealthSection {
+                name: "Tools".into(),
+                checks: vec![
+                    HealthCheckRecord {
+                        name: "node".into(),
+                        status: "warning".into(),
+                        summary: "outdated".into(),
+                        details: Vec::new(),
+                        recommendation: Some("update node".into()),
+                    },
+                    HealthCheckRecord {
+                        name: "cargo".into(),
+                        status: "error".into(),
+                        summary: "missing".into(),
+                        details: Vec::new(),
+                        recommendation: Some("install cargo".into()),
+                    },
+                ],
+            }]);
+            let steps = collect_next_steps(&report);
+            assert_eq!(steps.len(), 2);
+            assert!(steps[0].contains("recommended"));
+            assert!(steps[1].contains("required"));
+        }
+
+        #[test]
+        fn skips_checks_without_recommendation() {
+            let report = make_report(vec![HealthSection {
+                name: "Env".into(),
+                checks: vec![HealthCheckRecord {
+                    name: "shells".into(),
+                    status: "warning".into(),
+                    summary: "none".into(),
+                    details: Vec::new(),
+                    recommendation: None,
+                }],
+            }]);
+            assert!(collect_next_steps(&report).is_empty());
+        }
+
+        #[test]
+        fn info_status_uses_optional_label() {
+            let report = make_report(vec![HealthSection {
+                name: "Repo".into(),
+                checks: vec![HealthCheckRecord {
+                    name: "health".into(),
+                    status: "info".into(),
+                    summary: "no config".into(),
+                    details: Vec::new(),
+                    recommendation: Some("run init".into()),
+                }],
+            }]);
+            let steps = collect_next_steps(&report);
+            assert_eq!(steps.len(), 1);
+            assert!(steps[0].contains("optional"));
+        }
+    }
+
+    mod print_report_tests {
+        use super::*;
+
+        #[test]
+        fn does_not_panic_on_empty_report() {
+            let report = HealthReport {
+                passed: 0,
+                warnings: 0,
+                errors: 0,
+                sections: Vec::new(),
+            };
+            print_report(&report);
+        }
+
+        #[test]
+        fn handles_report_with_details() {
+            let report = HealthReport {
+                passed: 1,
+                warnings: 1,
+                errors: 1,
+                sections: vec![HealthSection {
+                    name: "Tools".into(),
+                    checks: vec![
+                        HealthCheckRecord {
+                            name: "rustc".into(),
+                            status: "ok".into(),
+                            summary: "1.85.0".into(),
+                            details: vec!["detail line".into()],
+                            recommendation: None,
+                        },
+                        HealthCheckRecord {
+                            name: "node".into(),
+                            status: "warning".into(),
+                            summary: "outdated".into(),
+                            details: Vec::new(),
+                            recommendation: Some("update".into()),
+                        },
+                        HealthCheckRecord {
+                            name: "cargo".into(),
+                            status: "error".into(),
+                            summary: "missing".into(),
+                            details: Vec::new(),
+                            recommendation: Some("install".into()),
+                        },
+                    ],
+                }],
+            };
+            print_report(&report);
+        }
+    }
+
+    mod tool_hints {
+        use super::*;
+
+        #[test]
+        fn append_tool_hint_details_adds_install_and_url() {
+            let cfg = health_cfg_for_tool(
+                "cargo",
+                ToolRequirement {
+                    required: true,
+                    min_version: None,
+                    exact_version: None,
+                    command: None,
+                    version_args: None,
+                    url: Some("https://rustup.rs".into()),
+                    install: Some("curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh".into()),
+                    latest_cmd: None,
+                    latest_args: None,
+                },
+            );
+            let mut details = Vec::new();
+            append_tool_hint_details(&mut details, "cargo", Some(&cfg));
+            assert_eq!(details.len(), 2);
+            assert!(details[0].starts_with("install:"));
+            assert!(details[1].starts_with("url:"));
+        }
+
+        #[test]
+        fn append_tool_hint_details_noop_without_config() {
+            let mut details = Vec::new();
+            append_tool_hint_details(&mut details, "cargo", None);
+            assert!(details.is_empty());
+        }
+
+        #[test]
+        fn tool_recommendation_returns_install_hint() {
+            let cfg = health_cfg_for_tool(
+                "node",
+                ToolRequirement {
+                    required: true,
+                    min_version: None,
+                    exact_version: None,
+                    command: None,
+                    version_args: None,
+                    url: None,
+                    install: Some("nvm install 20".into()),
+                    latest_cmd: None,
+                    latest_args: None,
+                },
+            );
+            let rec = tool_recommendation("node", Some(&cfg));
+            assert!(rec.unwrap().contains("nvm install 20"));
+        }
+
+        #[test]
+        fn tool_recommendation_falls_back_to_url() {
+            let cfg = health_cfg_for_tool(
+                "node",
+                ToolRequirement {
+                    required: true,
+                    min_version: None,
+                    exact_version: None,
+                    command: None,
+                    version_args: None,
+                    url: Some("https://nodejs.org".into()),
+                    install: None,
+                    latest_cmd: None,
+                    latest_args: None,
+                },
+            );
+            let rec = tool_recommendation("node", Some(&cfg));
+            assert!(rec.unwrap().contains("https://nodejs.org"));
+        }
+
+        #[test]
+        fn tool_recommendation_returns_none_without_config() {
+            assert!(tool_recommendation("node", None).is_none());
+        }
+
+        #[test]
+        fn tool_recommendation_returns_none_for_unknown_tool() {
+            let cfg = HealthConfig::default();
+            assert!(tool_recommendation("unknown", Some(&cfg)).is_none());
+        }
+    }
+
+    mod check_for_update_tests {
+        use super::*;
+
+        #[test]
+        fn returns_none_for_tool_without_latest_cmd() {
+            // "definitely-not-a-tool" has no built-in metadata, so
+            // `check_latest_version` returns None and `check_for_update`
+            // short-circuits.
+            assert!(check_for_update("definitely-not-a-tool", "1.0.0", None).is_none());
+        }
+
+        #[test]
+        fn returns_none_for_empty_version_string() {
+            assert!(check_for_update("definitely-not-a-tool", "", None).is_none());
+        }
+    }
+
+    mod detect_cage_tests {
+        use super::*;
+
+        #[test]
+        fn cage_name_covers_all_variants() {
+            assert_eq!(cage_name(&Cage::Docker), "docker");
+            assert_eq!(cage_name(&Cage::Podman), "podman");
+            assert_eq!(cage_name(&Cage::Lxc), "lxc");
+            assert_eq!(cage_name(&Cage::Wsl), "wsl");
+            assert_eq!(cage_name(&Cage::Kubernetes), "kubernetes");
+            assert_eq!(cage_name(&Cage::Host), "host");
+        }
+
+        #[test]
+        fn detect_cage_returns_a_variant() {
+            // Just verify it does not panic and returns a valid cage.
+            let cage = detect_cage();
+            let name = cage_name(&cage);
+            assert!(!name.is_empty());
+        }
+    }
+
+    mod detect_shells_tests {
+        use super::*;
+
+        #[test]
+        fn returns_sorted_deduped_shells() {
+            let shells = detect_shells();
+            // On Linux /etc/shells should exist; on other platforms
+            // the function returns an empty Vec, which is also valid.
+            if !shells.is_empty() {
+                // Verify sorted.
+                let mut sorted = shells.clone();
+                sorted.sort();
+                assert_eq!(shells, sorted);
+                // Verify deduped.
+                let mut deduped = shells.clone();
+                deduped.dedup();
+                assert_eq!(shells, deduped);
+            }
+        }
+    }
+
+    mod check_virtualenv_tests {
+        use super::*;
+
+        #[test]
+        fn no_venv_and_no_directories_produces_no_checks() {
+            // Remove env vars so neither path triggers.
+            let had_venv = std::env::var("VIRTUAL_ENV").ok();
+            let had_conda = std::env::var("CONDA_DEFAULT_ENV").ok();
+            unsafe {
+                std::env::remove_var("VIRTUAL_ENV");
+                std::env::remove_var("CONDA_DEFAULT_ENV");
+            }
+
+            let mut checks = Vec::new();
+            let mut pass = 0u32;
+            let mut warn = 0u32;
+
+            // Run from temp dir where .venv/venv don't exist.
+            let prev_dir = std::env::current_dir().ok();
+            let _ = std::env::set_current_dir(std::env::temp_dir());
+
+            check_virtualenv(&mut checks, &mut pass, &mut warn);
+
+            // Restore.
+            if let Some(dir) = prev_dir {
+                let _ = std::env::set_current_dir(dir);
+            }
+            if let Some(v) = had_venv {
+                unsafe { std::env::set_var("VIRTUAL_ENV", v) };
+            }
+            if let Some(v) = had_conda {
+                unsafe { std::env::set_var("CONDA_DEFAULT_ENV", v) };
+            }
+
+            // With no venv and no .venv dir, either we get 0 checks
+            // (no venv) or a warning (if .venv exists in temp dir).
+            assert!(checks.is_empty() || checks[0].status == "warning");
+        }
+    }
+
+    mod detect_privilege_tests {
+        use super::*;
+
+        #[test]
+        fn returns_a_non_empty_string() {
+            let p = detect_privilege();
+            assert!(!p.is_empty());
+        }
+    }
+
+    mod which_exists_tests {
+        use super::*;
+
+        #[test]
+        fn finds_sh() {
+            assert!(which_exists("sh"));
+        }
+
+        #[test]
+        fn rejects_nonexistent_command() {
+            assert!(!which_exists("definitely-not-installed-command"));
+        }
+    }
+
+    mod run_builtin_fix_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn copies_claude_md_when_missing() {
+            let dir = std::env::temp_dir().join("health-fix-claude-md");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let result = run_builtin_fix(&dir, "copy-doc CLAUDE.md");
+            assert!(result.is_ok());
+            assert!(dir.join("CLAUDE.md").exists());
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn copies_disclaimer_md_when_missing() {
+            let dir = std::env::temp_dir().join("health-fix-disclaimer-md");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let result = run_builtin_fix(&dir, "copy-doc DISCLAIMER.md");
+            assert!(result.is_ok());
+            assert!(dir.join("DISCLAIMER.md").exists());
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn refuses_to_overwrite_existing() {
+            let dir = std::env::temp_dir().join("health-fix-existing");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("CLAUDE.md"), "existing").unwrap();
+
+            let result = run_builtin_fix(&dir, "copy-doc CLAUDE.md");
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("already exists"));
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn rejects_unknown_builtin_doc() {
+            let dir = std::env::temp_dir().join("health-fix-unknown-doc");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let result = run_builtin_fix(&dir, "copy-doc UNKNOWN.md");
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("unknown built-in doc"));
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn rejects_unknown_builtin_command() {
+            let dir = std::env::temp_dir().join("health-fix-unknown-cmd");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let result = run_builtin_fix(&dir, "do-something");
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("unknown builtin"));
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn rejects_empty_builtin_command() {
+            let dir = std::env::temp_dir().join("health-fix-empty-cmd");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let result = run_builtin_fix(&dir, "");
+            assert!(result.is_err());
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn copy_doc_requires_filename() {
+            let dir = std::env::temp_dir().join("health-fix-no-filename");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let result = run_builtin_fix(&dir, "copy-doc");
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("requires a filename"));
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    mod run_shell_fix_tests {
+        use super::*;
+
+        #[test]
+        fn successful_command_returns_ok() {
+            let dir = std::env::temp_dir();
+            let result = run_shell_fix(&dir, "echo 'all good'");
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap(), "all good");
+        }
+
+        #[test]
+        fn failing_command_returns_err() {
+            let dir = std::env::temp_dir();
+            let result = run_shell_fix(&dir, "echo 'bad' >&2; exit 1");
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("bad"));
+        }
+
+        #[test]
+        fn failing_command_with_no_output_returns_default_message() {
+            let dir = std::env::temp_dir();
+            let result = run_shell_fix(&dir, "exit 1");
+            assert!(result.is_err());
+            assert_eq!(result.unwrap_err(), "fix command failed");
+        }
+    }
+
+    mod cmd_init_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn creates_health_toml_when_missing() {
+            let dir = std::env::temp_dir().join("health-init-create");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let code = cmd_init(&dir, false);
+            assert_eq!(code, 0);
+            assert!(repo_dir.join("health.toml").exists());
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn creates_health_toml_json_output() {
+            let dir = std::env::temp_dir().join("health-init-json");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let code = cmd_init(&dir, true);
+            assert_eq!(code, 0);
+            assert!(repo_dir.join("health.toml").exists());
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn returns_zero_when_already_exists() {
+            let dir = std::env::temp_dir().join("health-init-exists");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+            fs::write(repo_dir.join("health.toml"), "existing").unwrap();
+
+            assert_eq!(cmd_init(&dir, false), 0);
+            assert_eq!(cmd_init(&dir, true), 0);
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    mod cmd_check_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn runs_check_on_empty_repo() {
+            let dir = std::env::temp_dir().join("health-check-empty");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            // Should not panic; may return non-zero due to missing git.
+            let _code = cmd_check(&dir, false, false, false);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn runs_check_json_on_empty_repo() {
+            let dir = std::env::temp_dir().join("health-check-json");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let _code = cmd_check(&dir, false, false, true);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn runs_check_verbose_on_empty_repo() {
+            let dir = std::env::temp_dir().join("health-check-verbose");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let _code = cmd_check(&dir, true, false, false);
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
     mod check_execute {
         use super::*;
 

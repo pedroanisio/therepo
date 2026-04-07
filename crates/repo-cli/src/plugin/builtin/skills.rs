@@ -2616,6 +2616,246 @@ mod tests {
         }
     }
 
+    mod write_skills_template_tests {
+        use super::*;
+
+        #[test]
+        fn writes_template_when_missing() {
+            let dir = temp_dir("write-template");
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let result = write_skills_template(&repo_dir);
+            assert!(result.is_ok());
+            assert!(repo_dir.join("skills.toml").exists());
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn skips_when_already_exists() {
+            let dir = temp_dir("write-template-exists");
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+            fs::write(repo_dir.join("skills.toml"), "existing").unwrap();
+
+            let result = write_skills_template(&repo_dir);
+            assert!(result.is_ok());
+            // Content should not be overwritten.
+            assert_eq!(fs::read_to_string(repo_dir.join("skills.toml")).unwrap(), "existing");
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    mod write_builtin_asset_groups_tests {
+        use super::*;
+
+        #[test]
+        fn writes_assets_to_new_directory() {
+            let dir = temp_dir("write-assets");
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let result = write_builtin_asset_groups(&repo_dir);
+            assert!(result.is_ok());
+            // At least one skill file should exist.
+            assert!(repo_dir.join("skills").exists());
+            assert!(repo_dir.join("references").exists());
+            assert!(repo_dir.join("schemas").exists());
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn skips_existing_assets_on_second_run() {
+            let dir = temp_dir("write-assets-idem");
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            write_builtin_asset_groups(&repo_dir).unwrap();
+            // Second run should also succeed (skip all existing).
+            let result = write_builtin_asset_groups(&repo_dir);
+            assert!(result.is_ok());
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    mod default_scope_test {
+        use super::*;
+
+        #[test]
+        fn returns_project() {
+            assert_eq!(default_scope(), "project");
+        }
+    }
+
+    mod find_skill_md_in_zip_tests {
+        use super::*;
+        use std::io::Write;
+
+        fn make_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
+            let mut buf = Vec::new();
+            {
+                let mut writer = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let opts = zip::write::SimpleFileOptions::default()
+                    .compression_method(zip::CompressionMethod::Stored);
+                for (name, content) in files {
+                    writer.start_file(name.to_string(), opts).unwrap();
+                    writer.write_all(content).unwrap();
+                }
+                writer.finish().unwrap();
+            }
+            buf
+        }
+
+        #[test]
+        fn finds_root_level_skill_md() {
+            let zip_bytes = make_zip(&[("SKILL.md", b"---\nname: test\n---\n")]);
+            let cursor = std::io::Cursor::new(zip_bytes.as_slice());
+            let mut archive = zip::ZipArchive::new(cursor).unwrap();
+            let result = find_skill_md_in_zip(&mut archive);
+            assert!(result.is_some());
+            let (path, prefix) = result.unwrap();
+            assert_eq!(path, "SKILL.md");
+            assert!(prefix.is_empty());
+        }
+
+        #[test]
+        fn finds_nested_skill_md() {
+            let zip_bytes = make_zip(&[("my-skill/SKILL.md", b"---\nname: test\n---\n")]);
+            let cursor = std::io::Cursor::new(zip_bytes.as_slice());
+            let mut archive = zip::ZipArchive::new(cursor).unwrap();
+            let result = find_skill_md_in_zip(&mut archive);
+            assert!(result.is_some());
+            let (path, prefix) = result.unwrap();
+            assert_eq!(path, "my-skill/SKILL.md");
+            assert_eq!(prefix, "my-skill/");
+        }
+
+        #[test]
+        fn returns_none_when_no_skill_md() {
+            let zip_bytes = make_zip(&[("README.md", b"# Hello\n")]);
+            let cursor = std::io::Cursor::new(zip_bytes.as_slice());
+            let mut archive = zip::ZipArchive::new(cursor).unwrap();
+            assert!(find_skill_md_in_zip(&mut archive).is_none());
+        }
+    }
+
+    mod deploy_skill_zip_tests {
+        use super::*;
+        use std::io::Write;
+
+        fn make_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
+            let mut buf = Vec::new();
+            {
+                let mut writer = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let opts = zip::write::SimpleFileOptions::default()
+                    .compression_method(zip::CompressionMethod::Stored);
+                for (name, content) in files {
+                    writer.start_file(name.to_string(), opts).unwrap();
+                    writer.write_all(content).unwrap();
+                }
+                writer.finish().unwrap();
+            }
+            buf
+        }
+
+        #[test]
+        fn deploys_zip_with_root_skill_md() {
+            let dir = temp_dir("deploy-zip-root");
+            let zip_bytes = make_zip(&[
+                ("SKILL.md", b"---\nname: my-test-skill\n---\nbody\n"),
+                ("references/ref.md", b"# ref\n"),
+                ("scripts/helper.sh", b"#!/bin/sh\necho ok\n"),
+                ("examples/demo.md", b"# demo\n"),
+            ]);
+
+            let (name, refs, scripts, examples) =
+                deploy_skill_zip(&zip_bytes, "test.skill", &dir, false).unwrap();
+
+            assert_eq!(name, "my-test-skill");
+            assert_eq!(refs, 1);
+            assert_eq!(scripts, 1);
+            assert_eq!(examples, 1);
+            assert!(dir.join("my-test-skill").join("SKILL.md").exists());
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn skips_existing_without_force() {
+            let dir = temp_dir("deploy-zip-skip");
+            let zip_bytes = make_zip(&[("SKILL.md", b"---\nname: existing-skill\n---\n")]);
+
+            // First deploy succeeds.
+            deploy_skill_zip(&zip_bytes, "test.skill", &dir, false).unwrap();
+            // Second deploy skips.
+            let err = deploy_skill_zip(&zip_bytes, "test.skill", &dir, false).unwrap_err();
+            assert!(err.contains("__skip__"));
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn force_overwrites_existing() {
+            let dir = temp_dir("deploy-zip-force");
+            let zip_bytes = make_zip(&[
+                ("SKILL.md", b"---\nname: force-skill\n---\noriginal\n"),
+            ]);
+
+            deploy_skill_zip(&zip_bytes, "test.skill", &dir, false).unwrap();
+
+            let updated_zip = make_zip(&[
+                ("SKILL.md", b"---\nname: force-skill\n---\nupdated\n"),
+            ]);
+            deploy_skill_zip(&updated_zip, "test.skill", &dir, true).unwrap();
+
+            let content = fs::read_to_string(dir.join("force-skill").join("SKILL.md")).unwrap();
+            assert!(content.contains("updated"));
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn rejects_zip_without_skill_md() {
+            let dir = temp_dir("deploy-zip-no-skill");
+            let zip_bytes = make_zip(&[("README.md", b"# Hello\n")]);
+            let err = deploy_skill_zip(&zip_bytes, "bad.skill", &dir, false).unwrap_err();
+            assert!(err.contains("no SKILL.md"));
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn rejects_skill_md_without_name() {
+            let dir = temp_dir("deploy-zip-no-name");
+            let zip_bytes = make_zip(&[("SKILL.md", b"---\nauthor: Alice\n---\n")]);
+            let err = deploy_skill_zip(&zip_bytes, "bad.skill", &dir, false).unwrap_err();
+            assert!(err.contains("no name:"));
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn deploys_nested_zip_layout() {
+            let dir = temp_dir("deploy-zip-nested");
+            let zip_bytes = make_zip(&[
+                ("prefix/SKILL.md", b"---\nname: nested-skill\n---\n"),
+                ("prefix/references/ref.md", b"# ref\n"),
+            ]);
+
+            let (name, refs, _, _) =
+                deploy_skill_zip(&zip_bytes, "test.skill", &dir, false).unwrap();
+
+            assert_eq!(name, "nested-skill");
+            assert_eq!(refs, 1);
+            assert!(dir.join("nested-skill").join("SKILL.md").exists());
+            assert!(dir.join("nested-skill").join("references").join("ref.md").exists());
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
     /// Regression tests that catch documentation drift when built-in
     /// skills are added or removed. These exist because the skill count
     /// is manually mirrored in several documentation files.
