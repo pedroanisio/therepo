@@ -135,7 +135,7 @@ repo skills deploy --force    # Overwrite already-installed skills
 
 | Directory | Contents |
 |-----------|----------|
-| `.repo/skills/` | Built-in skill definitions (17 skills: tsdoc-voice, mental-model, adv-planning, purpose-md, testing-standards, incremental-validation, review-plan, prompt-builder, behavioral-layer, doc-hygiene, cli-ux-patterns, anti-slop, doc-patch, conceptual-codebase-analysis, codebase-requirements, response-dispatch, drift-risk-map) |
+| `.repo/skills/` | Built-in skill definitions (19 skills: tsdoc-voice, mental-model, adv-planning, purpose-md, testing-standards, incremental-validation, review-plan, prompt-builder, behavioral-layer, doc-hygiene, cli-ux-patterns, anti-slop, doc-patch, conceptual-codebase-analysis, codebase-requirements, response-dispatch, drift-risk-map, arch-decision-analysis, agent-task-coordination) |
 | `.repo/references/` | Reference documents (8: tsdoc-spec, mental-model-schema, plan-schema-fields, schema-reference, trait-spec, detection-patterns, report-template, sync-checks) |
 | `.repo/schemas/` | Formal schemas (2: plan-schema.ts, prompt-schema.ts) |
 

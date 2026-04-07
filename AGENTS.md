@@ -66,7 +66,7 @@ This creates:
   config.toml           # Repository configuration (create manually if needed)
   health.toml           # Tool versions and custom checks
   skills.toml           # Declared agent skills
-  skills/               # Built-in skill definitions (14 skills)
+  skills/               # Built-in skill definitions (18 skills)
   references/           # Reference documents (8 files)
   schemas/              # Formal schemas (2 files)
   prompts/              # Reusable prompt snippets (7 prompts)
@@ -226,7 +226,7 @@ repo skills deploy --force     # Overwrite existing skill files
 
 **`deploy` flag:** `--force` / `-f` — overwrite already-installed skills
 
-**17 built-in skills:**
+**19 built-in skills:**
 
 | Skill | Description |
 |-------|-------------|
@@ -247,6 +247,7 @@ repo skills deploy --force     # Overwrite existing skill files
 | codebase-requirements | Generate comprehensive REQUIREMENTS.md |
 | response-dispatch | Route tasks to execution, artefact, or text paths |
 | drift-risk-map | Audit codebase for silent drift-risk couplings |
+| arch-decision-analysis | Analyze architecture decisions with structured frameworks |
 
 **`.repo/skills.toml` structure:**
 ```toml
@@ -417,7 +418,7 @@ prevents ANSI escape codes from contaminating the output.
 
 ## 6. Bundled Assets (deployed by `repo skills init`)
 
-### Skills (14)
+### Skills (18)
 Copied to `.repo/skills/` — agent capability definitions.
 
 ### References (8)

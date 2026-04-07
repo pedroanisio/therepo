@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project is intended to follow Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+
+- `arch-decision-analysis.skill` and `agent-task-coordination.skill` as built-in ZIP skill bundles, including their embedded reference assets and helper scripts
+- default `CLAUDE.md` guidance for PALS's LAW, making explicit that all LLM output must be treated as untrusted and verified
+- a default `CLAUDE.md` skill-assertion gate that tells agents to check for matching skills before answering freeform
+
+### Changed
+
+- `repo skills deploy` built-in bundle inventory now includes 19 embedded skills instead of 17
+- `AGENTS.md`, the crate README, and bootstrap docs now describe the expanded built-in skill catalog and deployment surface
+- default `CLAUDE.md` reading order now prioritizes `CLAUDE.md`, file metadata, tests, and code without routing agents through `AGENTS.md`
+
 ## [0.4.0-rc-4] - 2026-04-01
 
 ### Added

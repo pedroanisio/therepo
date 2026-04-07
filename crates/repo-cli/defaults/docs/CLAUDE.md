@@ -48,6 +48,50 @@ Adjust the relative path to match depth: root → `./DISCLAIMER.md`, one level �
 
 ---
 
+## LLM Output Verification — Architectural Requirement (PALS's LAW)
+
+**LLMs will always produce some form of error.**
+Omissions, hallucinations, partial completions, and silent failures are
+not edge cases — they are statistical properties of the model class.
+
+Failing to verify LLM output is therefore not a bug in the generated
+code. It is an **architectural omission** in the system that consumed it.
+
+Every pipeline, agent, or workflow that accepts LLM output MUST treat
+that output as **untrusted, incomplete, and unverified by default.**
+Verification is not optional post-processing — it is a first-class
+design concern, on par with authentication and input validation.
+
+> Absence of a verification layer is a design defect, regardless of
+> how correct the LLM output appears to be.
+
+**Copy-paste contract block** for any function that calls an LLM:
+
+```
+/**
+ * ⚠ ARCHITECTURAL CONTRACT (PALS's LAW) — LLM OUTPUT IS UNVERIFIED BY DEFAULT
+ *
+ * LLMs statistically produce errors: omissions, hallucinations,
+ * partial completions, schema violations, and silent failures.
+ * These are properties of the model class, not exceptional conditions.
+ *
+ * Any caller of this function that skips output validation is
+ * introducing an architectural omission — not a code bug downstream.
+ *
+ * Verification is mandatory. Treat all LLM output as untrusted input.
+ */
+```
+
+**Short-form** (for headers, PR descriptions, commit messages, inline banners):
+
+```
+ARCHITECTURAL REQUIREMENT (PALS's LAW): LLMs will always produce some form of error.
+Absence of output verification is a design defect, not a runtime bug.
+All LLM output must be treated as untrusted and validated explicitly.
+```
+
+---
+
 ## Behavioral Constraints (ranked by priority)
 
 These are **hard operational rules**, not suggestions. Every AI agent operating
@@ -140,6 +184,19 @@ never blindly applied.
 
 ---
 
+### 7. Skill assertion gate
+
+Before executing any task, check whether a Claude Code skill
+(slash commands listed in the system prompt's available skills section)
+applies. If a skill's trigger conditions match the current request,
+invoke it via the Skill tool rather than producing a freeform response.
+
+```xml
+<RULES content=["Assert if any SKILL is needed"]>
+```
+
+---
+
 ## File-Level Agent Metadata (FLAM)
 
 **Before editing any file**, check for embedded metadata that defines constraints:
@@ -211,8 +268,7 @@ These principles have zero exceptions:
 
 ### Context Management
 
-- Priority reading order: `CLAUDE.md` → `AGENTS.md` → `__file_meta__` / FLAM → Tests → Code.
-- Read `AGENTS.md` for the complete `repo` CLI reference before running any `repo` command.
+- Priority reading order: `CLAUDE.md` → `__file_meta__` / FLAM → Tests → Code.
 - Read existing code before suggesting modifications.
 - Check metadata constraints before editing any file.
 
@@ -246,6 +302,5 @@ These principles have zero exceptions:
 |---|---|---|
 | `DISCLAIMER.md` | Everyone | Epistemic integrity commitments |
 | `CLAUDE.md` | AI agents + devs | HOW to build (process, standards, enforcement) |
-| `AGENTS.md` | AI agents | Complete `repo` CLI reference for programmatic usage |
 | `PURPOSE.md` | Everyone | WHY the project exists (beliefs, principles) |
 | `README.md` | Humans | WHAT the project does (usage, overview) |
