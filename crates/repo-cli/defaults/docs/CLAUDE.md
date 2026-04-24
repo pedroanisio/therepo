@@ -24,11 +24,11 @@ When creating or editing any `README.md`, include:
 ```markdown
 ## Disclaimer
 
-This work is subject to the methodological caveats and commitments described in [@DISCLAIMER.md](../DISCLAIMER.md).
+This work is subject to the methodological caveats and commitments described in [@DISCLAIMER.md](<RELATIVE_PATH_TO_DISCLAIMER>).
 > No statement or premise not backed by a real logical definition or verifiable reference should be taken for granted.
 ```
 
-Adjust the relative path to match depth: root → `./DISCLAIMER.md`, one level → `../DISCLAIMER.md`, two levels → `../../DISCLAIMER.md`. Place after the title, before the first content section. Never omit it.
+Replace `<RELATIVE_PATH_TO_DISCLAIMER>` with the correct path for the file's depth: root → `./DISCLAIMER.md`, one level → `../DISCLAIMER.md`, two levels → `../../DISCLAIMER.md`. Place after the title, before the first content section. Never omit it.
 
 ---
 
@@ -190,8 +190,6 @@ never blindly applied.
 - Document the feedback-processing decision in the response so the user
   can audit the reasoning.
 
----
-
 ### 7. Skill assertion gate
 
 Before executing any task, check whether a Claude Code skill
@@ -199,9 +197,33 @@ Before executing any task, check whether a Claude Code skill
 applies. If a skill's trigger conditions match the current request,
 invoke it via the Skill tool rather than producing a freeform response.
 
-```xml
-<RULES content=["Assert if any SKILL is needed"]>
-```
+### 8. Execution discipline — no complexity theatre
+
+When a task is clear, execute it. Do not:
+
+- Substitute planning documents, outlines, or progress reports for the
+  work itself.
+- Ask for approval on obvious subtasks.
+- Offer N alternatives when one is clearly correct — pick it and proceed.
+- Invoke "complexity" as a reason to stop. Complexity is a reason to
+  break the task into complete, executable subtasks — then execute them.
+- Stall on stylistic or aesthetic preferences. Ship, then adjust.
+- Cascade hypothetical clarifying questions. If you must ask, ask one
+  targeted question about the single blocking ambiguity.
+
+Pushback is still required (see Rules 1 and 6) when:
+
+- The request violates a constraint in this document.
+- The request has a concrete correctness problem (broken invariant,
+  contradicts `@PURPOSE.md`, will break tests or downstream callers).
+- The request's scope is genuinely ambiguous — not "I could interpret
+  this two ways" but "these two interpretations produce incompatible
+  outputs and I cannot pick without you."
+
+When pushing back, state the specific objection in one sentence, then
+either propose a resolution or ask one targeted question. Do not use
+"pushback" as cover for avoidance: if the objection is stylistic,
+speculative, or about imagined risk, drop it and execute.
 
 ---
 
@@ -277,7 +299,8 @@ These principles have zero exceptions:
 
 ### Context Management
 
-- Priority reading order: `CLAUDE.md` → `__file_meta__` / FLAM → Tests → Code.
+- Priority reading order: `CLAUDE.md` → `AGENTS.md` → `__file_meta__` / FLAM → Tests → Code.
+- Read `AGENTS.md` (when present) for any programmatic CLI reference before running project tooling.
 - Read existing code before suggesting modifications.
 - Check metadata constraints before editing any file.
 
@@ -311,5 +334,6 @@ These principles have zero exceptions:
 |---|---|---|
 | `DISCLAIMER.md` | Everyone | Epistemic integrity commitments |
 | `CLAUDE.md` | AI agents + devs | HOW to build (process, standards, enforcement) |
+| `AGENTS.md` | AI agents | Programmatic CLI/tooling reference (when present) |
 | `PURPOSE.md` | Everyone | WHY the project exists (beliefs, principles) |
 | `README.md` | Humans | WHAT the project does (usage, overview) |

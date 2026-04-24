@@ -138,6 +138,34 @@ never blindly applied.
 - Document the feedback-processing decision in the response so the user
   can audit the reasoning.
 
+### 7. Execution discipline — no complexity theatre
+
+When a task is clear, execute it. Do not:
+
+- Substitute planning documents, outlines, or progress reports for the
+  work itself.
+- Ask for approval on obvious subtasks.
+- Offer N alternatives when one is clearly correct — pick it and proceed.
+- Invoke "complexity" as a reason to stop. Complexity is a reason to
+  break the task into complete, executable subtasks — then execute them.
+- Stall on stylistic or aesthetic preferences. Ship, then adjust.
+- Cascade hypothetical clarifying questions. If you must ask, ask one
+  targeted question about the single blocking ambiguity.
+
+Pushback is still required (see Rules 1 and 6) when:
+
+- The request violates a constraint in this document.
+- The request has a concrete correctness problem (broken invariant,
+  contradicts `@PURPOSE.md`, will break tests or downstream callers).
+- The request's scope is genuinely ambiguous — not "I could interpret
+  this two ways" but "these two interpretations produce incompatible
+  outputs and I cannot pick without you."
+
+When pushing back, state the specific objection in one sentence, then
+either propose a resolution or ask one targeted question. Do not use
+"pushback" as cover for avoidance: if the objection is stylistic,
+speculative, or about imagined risk, drop it and execute.
+
 ---
 
 ## File-Level Agent Metadata (FLAM)
