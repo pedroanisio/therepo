@@ -32,6 +32,14 @@ Adjust the relative path to match depth: root → `./DISCLAIMER.md`, one level �
 
 ---
 
+### MANDATORY
+
+- Never propose changes that conflict with `@PURPOSE.md`.
+- Do not justify decisions based primarily on the current state of the codebase.
+- Always prioritize moving the codebase toward the desired target state defined by `@PURPOSE.md`, even when that requires departing from the existing implementation.
+
+---
+
 ## Project Overview
 
 <!-- [PROJECT] Replace this block with a 1–3 sentence description and a directory tree. -->
@@ -231,6 +239,7 @@ These principles have zero exceptions:
 1. **Fix root causes, never symptoms.** Investigate with 5-Whys before patching. If a test fails, understand why — don't just make it pass.
 2. **Test-Driven Development.** Red → Green → Refactor → Cleanup. Write the failing test first. No code ships without tests.
 3. **Production-ready code only.** No placeholders, no `TODO: implement later`, no incomplete stubs. Every commit must be deployable.
+4. **Quality regressions are fixed, not attributed.** When a quality regression is reported — visual, behavioral, or metric — fix it. Do not spend effort determining whether it predates the current session, was introduced by a recent change, or belongs to a different subsystem. Investigate the code directly, find the defect, fix it.
 
 ---
 

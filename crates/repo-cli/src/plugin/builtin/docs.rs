@@ -1748,4 +1748,921 @@ mod tests {
             assert!(result.contains("0/2 phases"), "got: {result}");
         }
     }
+
+    // ── parse_list_options ──────────────────────────────────────────
+
+    mod parse_options {
+        use super::*;
+
+        #[test]
+        fn empty_args_returns_defaults() {
+            let opts = parse_list_options(&[]).unwrap();
+            assert!(opts.query.is_none());
+            assert!(opts.status_filter.is_none());
+            assert!(!opts.json_output);
+            assert_eq!(opts.sort, SortMode::Date);
+            assert!(opts.limit.is_none());
+            assert_eq!(opts.details, DetailsMode::None);
+            assert!(!opts.interactive);
+        }
+
+        #[test]
+        fn json_flag() {
+            let opts = parse_list_options(&["--json"]).unwrap();
+            assert!(opts.json_output);
+        }
+
+        #[test]
+        fn interactive_flag() {
+            let opts = parse_list_options(&["--interactive"]).unwrap();
+            assert!(opts.interactive);
+        }
+
+        #[test]
+        fn status_filter() {
+            let opts = parse_list_options(&["--status", "Draft"]).unwrap();
+            assert_eq!(opts.status_filter.as_deref(), Some("draft"));
+        }
+
+        #[test]
+        fn status_missing_value() {
+            assert!(parse_list_options(&["--status"]).is_err());
+        }
+
+        #[test]
+        fn sort_all_modes() {
+            for (input, expected) in [
+                ("date", SortMode::Date),
+                ("status", SortMode::Status),
+                ("title", SortMode::Title),
+                ("progress", SortMode::Progress),
+            ] {
+                let opts = parse_list_options(&["--sort", input]).unwrap();
+                assert_eq!(opts.sort, expected);
+            }
+        }
+
+        #[test]
+        fn sort_invalid() {
+            assert!(parse_list_options(&["--sort", "unknown"]).is_err());
+        }
+
+        #[test]
+        fn sort_missing_value() {
+            assert!(parse_list_options(&["--sort"]).is_err());
+        }
+
+        #[test]
+        fn limit_valid() {
+            let opts = parse_list_options(&["--limit", "5"]).unwrap();
+            assert_eq!(opts.limit, Some(5));
+        }
+
+        #[test]
+        fn limit_invalid() {
+            assert!(parse_list_options(&["--limit", "abc"]).is_err());
+        }
+
+        #[test]
+        fn limit_missing_value() {
+            assert!(parse_list_options(&["--limit"]).is_err());
+        }
+
+        #[test]
+        fn details_all_modes() {
+            for (input, expected) in [
+                ("none", DetailsMode::None),
+                ("incomplete", DetailsMode::Incomplete),
+                ("all", DetailsMode::All),
+            ] {
+                let opts = parse_list_options(&["--details", input]).unwrap();
+                assert_eq!(opts.details, expected);
+            }
+        }
+
+        #[test]
+        fn details_invalid() {
+            assert!(parse_list_options(&["--details", "bad"]).is_err());
+        }
+
+        #[test]
+        fn details_missing_value() {
+            assert!(parse_list_options(&["--details"]).is_err());
+        }
+
+        #[test]
+        fn unknown_flag_rejected() {
+            assert!(parse_list_options(&["--foo"]).is_err());
+        }
+
+        #[test]
+        fn duplicate_queries_rejected() {
+            assert!(parse_list_options(&["query1", "query2"]).is_err());
+        }
+
+        #[test]
+        fn interactive_with_json_rejected() {
+            assert!(parse_list_options(&["--interactive", "--json"]).is_err());
+        }
+
+        #[test]
+        fn interactive_with_query_rejected() {
+            assert!(parse_list_options(&["--interactive", "myquery"]).is_err());
+        }
+
+        #[test]
+        fn query_is_captured() {
+            let opts = parse_list_options(&["my-plan"]).unwrap();
+            assert_eq!(opts.query.as_deref(), Some("my-plan"));
+        }
+    }
+
+    // ── extract_json_phases ────────────────────────────────────────
+
+    mod extract_phases {
+        use super::*;
+
+        #[test]
+        fn no_steps_returns_empty() {
+            let obj: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+            assert!(extract_json_phases(&obj).is_empty());
+        }
+
+        #[test]
+        fn empty_steps_returns_empty() {
+            let obj: serde_json::Map<String, serde_json::Value> =
+                serde_json::from_str(r#"{"steps": []}"#).unwrap();
+            assert!(extract_json_phases(&obj).is_empty());
+        }
+
+        #[test]
+        fn steps_without_execution_order_uses_step_order() {
+            let obj: serde_json::Map<String, serde_json::Value> = serde_json::from_str(
+                r#"{
+                    "steps": [
+                        {"id": "a", "title": "Alpha", "size": "S", "validationBudget": {"valReq": 2, "valDone": 1}},
+                        {"id": "b", "title": "Beta", "size": "M"}
+                    ]
+                }"#,
+            )
+            .unwrap();
+            let phases = extract_json_phases(&obj);
+            assert_eq!(phases.len(), 2);
+            assert!(phases[0].name.contains("Alpha"));
+            assert!(phases[0].name.contains("[S]"));
+            assert_eq!(phases[0].done, 1);
+            assert_eq!(phases[0].total, 2);
+            assert!(phases[1].name.contains("Beta"));
+            assert_eq!(phases[1].done, 0);
+            assert_eq!(phases[1].total, 1);
+        }
+
+        #[test]
+        fn parallel_groups_annotated() {
+            let obj: serde_json::Map<String, serde_json::Value> = serde_json::from_str(
+                r#"{
+                    "steps": [
+                        {"id": "a", "title": "A", "size": "S"},
+                        {"id": "b", "title": "B", "size": "M"},
+                        {"id": "c", "title": "C", "size": "L"}
+                    ],
+                    "executionOrder": {
+                        "sequence": ["a", "b", "c"],
+                        "parallelizableGroups": [["a", "b"]]
+                    }
+                }"#,
+            )
+            .unwrap();
+            let phases = extract_json_phases(&obj);
+            assert_eq!(phases.len(), 3);
+            assert!(phases[0].name.starts_with("\u{250c}"), "first in group: {}", phases[0].name);
+            assert!(phases[1].name.starts_with("\u{2514}"), "last in group: {}", phases[1].name);
+            // c is not in a parallel group
+            assert!(phases[2].name.starts_with("[L]"), "solo: {}", phases[2].name);
+        }
+
+        #[test]
+        fn three_way_parallel_group() {
+            let obj: serde_json::Map<String, serde_json::Value> = serde_json::from_str(
+                r#"{
+                    "steps": [
+                        {"id": "a", "title": "A", "size": "S"},
+                        {"id": "b", "title": "B", "size": "M"},
+                        {"id": "c", "title": "C", "size": "L"}
+                    ],
+                    "executionOrder": {
+                        "sequence": ["a", "b", "c"],
+                        "parallelizableGroups": [["a", "b", "c"]]
+                    }
+                }"#,
+            )
+            .unwrap();
+            let phases = extract_json_phases(&obj);
+            assert!(phases[0].name.starts_with("\u{250c}"), "first: {}", phases[0].name);
+            assert!(phases[1].name.starts_with("\u{251c}"), "middle: {}", phases[1].name);
+            assert!(phases[2].name.starts_with("\u{2514}"), "last: {}", phases[2].name);
+        }
+    }
+
+    // ── sort_docs ──────────────────────────────────────────────────
+
+    mod sort {
+        use super::*;
+
+        fn doc(title: &str, date: &str, status: &str, done: usize, total: usize) -> Doc {
+            Doc {
+                file: format!("{title}.md"),
+                title: title.into(),
+                version: String::new(),
+                status: status.into(),
+                date: date.into(),
+                phases: vec![PlanPhase { name: "p".into(), done, total }],
+            }
+        }
+
+        #[test]
+        fn sort_by_date() {
+            let a = doc("Alpha", "2026-01-01", "draft", 0, 1);
+            let b = doc("Beta", "2026-02-01", "draft", 0, 1);
+            let mut docs: Vec<&Doc> = vec![&a, &b];
+            sort_docs(&mut docs, SortMode::Date);
+            assert_eq!(docs[0].title, "Beta");
+            assert_eq!(docs[1].title, "Alpha");
+        }
+
+        #[test]
+        fn sort_by_status() {
+            let a = doc("Alpha", "2026-01-01", "draft", 0, 1);
+            let b = doc("Beta", "2026-01-01", "accepted", 0, 1);
+            let mut docs: Vec<&Doc> = vec![&a, &b];
+            sort_docs(&mut docs, SortMode::Status);
+            assert_eq!(docs[0].title, "Beta");  // "accepted" < "draft"
+            assert_eq!(docs[1].title, "Alpha");
+        }
+
+        #[test]
+        fn sort_by_title() {
+            let a = doc("Zulu", "2026-01-01", "draft", 0, 1);
+            let b = doc("Alpha", "2026-01-01", "draft", 0, 1);
+            let mut docs: Vec<&Doc> = vec![&a, &b];
+            sort_docs(&mut docs, SortMode::Title);
+            assert_eq!(docs[0].title, "Alpha");
+            assert_eq!(docs[1].title, "Zulu");
+        }
+
+        #[test]
+        fn sort_by_progress() {
+            let a = doc("Low", "2026-01-01", "active", 0, 3);
+            let b = doc("High", "2026-01-01", "active", 3, 3);
+            let mut docs: Vec<&Doc> = vec![&a, &b];
+            sort_docs(&mut docs, SortMode::Progress);
+            assert_eq!(docs[0].title, "High");
+            assert_eq!(docs[1].title, "Low");
+        }
+    }
+
+    // ── find_doc ───────────────────────────────────────────────────
+
+    mod find {
+        use super::*;
+
+        fn doc(file: &str, title: &str) -> Doc {
+            Doc {
+                file: file.into(),
+                title: title.into(),
+                version: String::new(),
+                status: "draft".into(),
+                date: "2026-01-01".into(),
+                phases: Vec::new(),
+            }
+        }
+
+        #[test]
+        fn exact_filename_match() {
+            let d = doc("plan.md", "My Plan");
+            let docs: Vec<&Doc> = vec![&d];
+            assert_eq!(find_doc(&docs, "plan.md").unwrap().title, "My Plan");
+        }
+
+        #[test]
+        fn stem_match() {
+            let d = doc("release-plan.md", "Release Plan");
+            let docs: Vec<&Doc> = vec![&d];
+            assert_eq!(find_doc(&docs, "release-plan").unwrap().title, "Release Plan");
+        }
+
+        #[test]
+        fn prefix_match_title() {
+            let d = doc("plan.md", "Release Checklist v2");
+            let docs: Vec<&Doc> = vec![&d];
+            assert_eq!(find_doc(&docs, "release").unwrap().title, "Release Checklist v2");
+        }
+
+        #[test]
+        fn prefix_match_file() {
+            let d = doc("release-v2.md", "Some Title");
+            let docs: Vec<&Doc> = vec![&d];
+            assert_eq!(find_doc(&docs, "release").unwrap().title, "Some Title");
+        }
+
+        #[test]
+        fn no_match_returns_none() {
+            let d = doc("plan.md", "My Plan");
+            let docs: Vec<&Doc> = vec![&d];
+            assert!(find_doc(&docs, "nonexistent").is_none());
+        }
+    }
+
+    // ── should_expand_doc ──────────────────────────────────────────
+
+    mod expand {
+        use super::*;
+
+        fn doc_with_phases(done: usize, total: usize) -> Doc {
+            Doc {
+                file: "test.md".into(),
+                title: "Test".into(),
+                version: String::new(),
+                status: "active".into(),
+                date: "2026-01-01".into(),
+                phases: vec![PlanPhase { name: "p".into(), done, total }],
+            }
+        }
+
+        #[test]
+        fn none_never_expands() {
+            assert!(!should_expand_doc(DetailsMode::None, &doc_with_phases(0, 3)));
+        }
+
+        #[test]
+        fn all_always_expands() {
+            assert!(should_expand_doc(DetailsMode::All, &doc_with_phases(3, 3)));
+        }
+
+        #[test]
+        fn incomplete_expands_when_not_done() {
+            assert!(should_expand_doc(DetailsMode::Incomplete, &doc_with_phases(1, 3)));
+        }
+
+        #[test]
+        fn incomplete_does_not_expand_when_complete() {
+            assert!(!should_expand_doc(DetailsMode::Incomplete, &doc_with_phases(3, 3)));
+        }
+    }
+
+    // ── to_json_doc ────────────────────────────────────────────────
+
+    mod json_doc {
+        use super::*;
+
+        #[test]
+        fn round_trip_preserves_fields() {
+            let doc = Doc {
+                file: "test.json".into(),
+                title: "Test Plan".into(),
+                version: "1.0.0".into(),
+                status: "active".into(),
+                date: "2026-04-01".into(),
+                phases: vec![
+                    PlanPhase { name: "Setup".into(), done: 2, total: 2 },
+                    PlanPhase { name: "Ship".into(), done: 0, total: 3 },
+                ],
+            };
+            let json_doc = to_json_doc(&doc);
+            assert_eq!(json_doc.file, "test.json");
+            assert_eq!(json_doc.title, "Test Plan");
+            assert_eq!(json_doc.version, "1.0.0");
+            assert_eq!(json_doc.status, "active");
+            assert_eq!(json_doc.date, "2026-04-01");
+            assert_eq!(json_doc.progress.complete_phases, 1);
+            assert_eq!(json_doc.progress.total_phases, 2);
+            assert_eq!(json_doc.progress.done_tasks, 2);
+            assert_eq!(json_doc.progress.total_tasks, 5);
+            assert_eq!(json_doc.phases.len(), 2);
+            assert_eq!(json_doc.phases[0].status, "done");
+            assert_eq!(json_doc.phases[1].status, "pending");
+        }
+    }
+
+    // ── parse_yaml_fields ──────────────────────────────────────────
+
+    mod yaml_fields {
+        use super::*;
+
+        #[test]
+        fn unquoted_value() {
+            let fields = parse_yaml_fields("title: My Title");
+            assert_eq!(fields.get("title").unwrap(), "My Title");
+        }
+
+        #[test]
+        fn double_quoted_value() {
+            let fields = parse_yaml_fields("title: \"My Title\"");
+            assert_eq!(fields.get("title").unwrap(), "My Title");
+        }
+
+        #[test]
+        fn single_quoted_value() {
+            let fields = parse_yaml_fields("version: '1.0.0'");
+            assert_eq!(fields.get("version").unwrap(), "1.0.0");
+        }
+
+        #[test]
+        fn skips_indented_lines() {
+            let fields = parse_yaml_fields("title: Hello\n  indented: value");
+            assert_eq!(fields.len(), 1);
+            assert!(!fields.contains_key("indented"));
+        }
+
+        #[test]
+        fn skips_empty_lines() {
+            let fields = parse_yaml_fields("title: Hello\n\nstatus: draft");
+            assert_eq!(fields.len(), 2);
+        }
+
+        #[test]
+        fn skips_multiline_markers() {
+            let fields = parse_yaml_fields("description: >\ntitle: Hello\nblock: |");
+            // description and block should be skipped (> and | values)
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields.get("title").unwrap(), "Hello");
+        }
+
+        #[test]
+        fn keys_lowercased() {
+            let fields = parse_yaml_fields("Title: Hello");
+            assert_eq!(fields.get("title").unwrap(), "Hello");
+        }
+    }
+
+    // ── try_parse_plan_file ────────────────────────────────────────
+
+    mod plan_file {
+        use super::*;
+
+        #[test]
+        fn md_with_frontmatter_and_phases() {
+            let dir = temp_dir("plan-md");
+            write_file(
+                &dir,
+                "plan.md",
+                "---\ntitle: My Plan\nversion: 1.0.0\nstatus: active\ndate: 2026-01-01\n---\n\
+                 ## Phase 1 - Setup\n- [x] done\n- [ ] todo\n",
+            );
+            let doc = try_parse_plan_file(&dir.join("plan.md")).unwrap();
+            assert_eq!(doc.title, "My Plan");
+            assert_eq!(doc.phases.len(), 1);
+            assert_eq!(doc.phases[0].done, 1);
+            assert_eq!(doc.phases[0].total, 2);
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn md_with_phases_but_no_frontmatter() {
+            let dir = temp_dir("plan-no-fm");
+            write_file(
+                &dir,
+                "my-plan.md",
+                "# Title\n## Phase 1 - Setup\n- [x] done\n",
+            );
+            let doc = try_parse_plan_file(&dir.join("my-plan.md")).unwrap();
+            assert_eq!(doc.title, "my plan");
+            assert_eq!(doc.phases.len(), 1);
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn md_without_frontmatter_or_phases_returns_none() {
+            let dir = temp_dir("plan-none");
+            write_file(&dir, "notes.md", "# Just some notes\nHello world.\n");
+            assert!(try_parse_plan_file(&dir.join("notes.md")).is_none());
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn json_plan_file() {
+            let dir = temp_dir("plan-json");
+            write_file(
+                &dir,
+                "plan.json",
+                r#"{
+                    "schemaVersion": "1",
+                    "metadata": { "planId": "test", "version": "1.0.0", "updatedAt": "2026-01-01T00:00:00Z" },
+                    "problem": { "successOutcome": "Test outcome" },
+                    "steps": [{"id": "a", "title": "A", "size": "S"}]
+                }"#,
+            );
+            let doc = try_parse_plan_file(&dir.join("plan.json")).unwrap();
+            assert_eq!(doc.title, "Test outcome");
+            assert_eq!(doc.version, "1.0.0");
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn unknown_extension_returns_none() {
+            let dir = temp_dir("plan-txt");
+            write_file(&dir, "plan.txt", "hello");
+            assert!(try_parse_plan_file(&dir.join("plan.txt")).is_none());
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    // ── scan_docs (with frontmatter and without) ───────────────────
+
+    mod scan {
+        use super::*;
+
+        #[test]
+        fn scan_docs_includes_md_without_frontmatter() {
+            let dir = temp_dir("scan-nofm");
+            write_file(&dir, "no-frontmatter.md", "# Just a heading\nSome body text.\n");
+            let docs = scan_docs(&dir).unwrap();
+            assert_eq!(docs.len(), 1);
+            assert_eq!(docs[0].file, "no-frontmatter.md");
+            assert_eq!(docs[0].title, "no frontmatter");
+            assert_eq!(docs[0].status, "\u{2014}");
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn scan_docs_empty_dir() {
+            let dir = temp_dir("scan-empty");
+            let docs = scan_docs(&dir).unwrap();
+            assert!(docs.is_empty());
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    // ── resolve_docs ───────────────────────────────────────────────
+
+    mod resolve {
+        use super::*;
+
+        #[test]
+        fn plans_uses_storage_dir() {
+            let root = temp_dir("resolve-plans");
+            // No .repo/storage/ directory -> empty
+            let docs = resolve_docs(&root, DocKind::Plans).unwrap();
+            assert!(docs.is_empty());
+            fs::remove_dir_all(root).ok();
+        }
+
+        #[test]
+        fn designs_uses_docs_dir() {
+            let root = temp_dir("resolve-designs");
+            // No _docs/designs/ directory -> empty
+            let docs = resolve_docs(&root, DocKind::Designs).unwrap();
+            assert!(docs.is_empty());
+            fs::remove_dir_all(root).ok();
+        }
+
+        #[test]
+        fn plans_with_storage_files() {
+            let root = temp_dir("resolve-plans-files");
+            write_file(
+                &root,
+                ".repo/storage/plan.json",
+                r#"{
+                    "schemaVersion": "1",
+                    "metadata": { "planId": "test", "version": "1.0.0", "updatedAt": "2026-01-01T00:00:00Z" },
+                    "problem": { "successOutcome": "Test" },
+                    "steps": [{"id": "a", "title": "A", "size": "S"}]
+                }"#,
+            );
+            let docs = resolve_docs(&root, DocKind::Plans).unwrap();
+            assert_eq!(docs.len(), 1);
+            fs::remove_dir_all(root).ok();
+        }
+    }
+
+    // ── walk_storage_dir ───────────────────────────────────────────
+
+    mod walk {
+        use super::*;
+
+        #[test]
+        fn nested_dirs_are_traversed() {
+            let root = temp_dir("walk-nested");
+            write_file(
+                &root,
+                "sub/plan.json",
+                r#"{
+                    "schemaVersion": "1",
+                    "metadata": { "planId": "nested", "version": "1.0.0", "updatedAt": "2026-01-01T00:00:00Z" },
+                    "problem": { "successOutcome": "Nested" },
+                    "steps": [{"id": "a", "title": "A", "size": "S"}]
+                }"#,
+            );
+            let mut docs = Vec::new();
+            walk_storage_dir(&root, &mut docs);
+            assert_eq!(docs.len(), 1);
+            assert_eq!(docs[0].title, "Nested");
+            fs::remove_dir_all(root).ok();
+        }
+
+        #[test]
+        fn unreadable_dir_does_not_panic() {
+            let dir = std::path::PathBuf::from("/nonexistent-path-for-test");
+            let mut docs = Vec::new();
+            walk_storage_dir(&dir, &mut docs);
+            assert!(docs.is_empty());
+        }
+    }
+
+    // ── print_json ─────────────────────────────────────────────────
+
+    mod print_json_tests {
+        use super::*;
+
+        #[test]
+        fn produces_valid_json() {
+            let doc = Doc {
+                file: "test.md".into(),
+                title: "Test".into(),
+                version: "1.0.0".into(),
+                status: "draft".into(),
+                date: "2026-01-01".into(),
+                phases: Vec::new(),
+            };
+            let docs: Vec<&Doc> = vec![&doc];
+            // Should not return an error
+            assert!(print_json(&docs).is_ok());
+        }
+    }
+
+    // ── scan_storage_plans ─────────────────────────────────────────
+
+    mod storage_plans {
+        use super::*;
+
+        #[test]
+        fn collects_and_sorts_plans() {
+            let dir = temp_dir("storage-plans");
+            write_file(
+                &dir,
+                "a.json",
+                r#"{
+                    "schemaVersion": "1",
+                    "metadata": { "planId": "alpha", "version": "1.0.0", "updatedAt": "2026-01-01T00:00:00Z" },
+                    "problem": { "successOutcome": "Alpha" },
+                    "steps": [{"id": "a", "title": "A", "size": "S"}]
+                }"#,
+            );
+            write_file(
+                &dir,
+                "b.json",
+                r#"{
+                    "schemaVersion": "1",
+                    "metadata": { "planId": "beta", "version": "1.0.0", "updatedAt": "2026-02-01T00:00:00Z" },
+                    "problem": { "successOutcome": "Beta" },
+                    "steps": [{"id": "b", "title": "B", "size": "M"}]
+                }"#,
+            );
+            let plans = scan_storage_plans(&dir);
+            assert_eq!(plans.len(), 2);
+            // Sorted by date descending
+            assert_eq!(plans[0].title, "Beta");
+            assert_eq!(plans[1].title, "Alpha");
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    // ── print_table (no-panic smoke tests) ─────────────────────────
+
+    mod table {
+        use super::*;
+
+        fn make_doc(file: &str, title: &str, status: &str, phases: Vec<PlanPhase>) -> Doc {
+            Doc {
+                file: file.into(),
+                title: title.into(),
+                version: "1.0.0".into(),
+                status: status.into(),
+                date: "2026-01-01".into(),
+                phases,
+            }
+        }
+
+        #[test]
+        fn plans_with_phases_does_not_panic() {
+            let doc = make_doc(
+                "plan.json",
+                "Test Plan",
+                "active",
+                vec![
+                    PlanPhase { name: "Setup".into(), done: 1, total: 2 },
+                    PlanPhase { name: "Ship".into(), done: 0, total: 3 },
+                ],
+            );
+            let docs: Vec<&Doc> = vec![&doc];
+            print_table(DocKind::Plans, &docs, DetailsMode::None);
+        }
+
+        #[test]
+        fn plans_with_details_all_does_not_panic() {
+            let doc = make_doc(
+                "plan.json",
+                "Test Plan",
+                "active",
+                vec![
+                    PlanPhase { name: "Setup".into(), done: 2, total: 2 },
+                    PlanPhase { name: "Ship".into(), done: 1, total: 3 },
+                ],
+            );
+            let docs: Vec<&Doc> = vec![&doc];
+            print_table(DocKind::Plans, &docs, DetailsMode::All);
+        }
+
+        #[test]
+        fn plans_with_details_incomplete_does_not_panic() {
+            let doc = make_doc(
+                "plan.json",
+                "Test Plan",
+                "active",
+                vec![PlanPhase { name: "Setup".into(), done: 0, total: 2 }],
+            );
+            let docs: Vec<&Doc> = vec![&doc];
+            print_table(DocKind::Plans, &docs, DetailsMode::Incomplete);
+        }
+
+        #[test]
+        fn non_plan_without_phases_does_not_panic() {
+            let doc = make_doc("design.md", "My Design", "accepted", Vec::new());
+            let docs: Vec<&Doc> = vec![&doc];
+            print_table(DocKind::Designs, &docs, DetailsMode::None);
+        }
+
+        #[test]
+        fn non_plan_with_phases_does_not_panic() {
+            let doc = make_doc(
+                "adr.md",
+                "My ADR",
+                "proposed",
+                vec![PlanPhase { name: "Review".into(), done: 0, total: 1 }],
+            );
+            let docs: Vec<&Doc> = vec![&doc];
+            print_table(DocKind::Adrs, &docs, DetailsMode::All);
+        }
+
+        #[test]
+        fn plans_no_phases_uses_basic_layout() {
+            let doc = make_doc("plan.json", "Empty Plan", "proposal", Vec::new());
+            let docs: Vec<&Doc> = vec![&doc];
+            print_table(DocKind::Plans, &docs, DetailsMode::None);
+        }
+
+        #[test]
+        fn empty_docs_does_not_panic() {
+            let docs: Vec<&Doc> = vec![];
+            print_table(DocKind::References, &docs, DetailsMode::None);
+        }
+
+        #[test]
+        fn details_all_with_complete_phases() {
+            let doc = make_doc(
+                "plan.json",
+                "Done Plan",
+                "complete",
+                vec![PlanPhase { name: "Only".into(), done: 5, total: 5 }],
+            );
+            let docs: Vec<&Doc> = vec![&doc];
+            print_table(DocKind::Plans, &docs, DetailsMode::All);
+        }
+
+        #[test]
+        fn details_all_with_zero_total_phase() {
+            let doc = make_doc(
+                "plan.json",
+                "Unknown Plan",
+                "active",
+                vec![PlanPhase { name: "Empty".into(), done: 0, total: 0 }],
+            );
+            let docs: Vec<&Doc> = vec![&doc];
+            print_table(DocKind::Plans, &docs, DetailsMode::All);
+        }
+    }
+
+    // ── list_all (smoke) ───────────────────────────────────────────
+
+    mod list_all_tests {
+        use super::*;
+
+        #[test]
+        fn empty_root_text_does_not_panic() {
+            let root = temp_dir("list-all-text");
+            list_all(&root, false);
+            fs::remove_dir_all(root).ok();
+        }
+
+        #[test]
+        fn empty_root_json_does_not_panic() {
+            let root = temp_dir("list-all-json");
+            list_all(&root, true);
+            fs::remove_dir_all(root).ok();
+        }
+    }
+
+    // ── list_kind (integration) ────────────────────────────────────
+
+    mod list_kind_tests {
+        use super::*;
+
+        #[test]
+        fn empty_docs_returns_zero() {
+            let root = temp_dir("list-kind-empty");
+            assert_eq!(list_kind(&root, DocKind::Designs, &[]), 0);
+            fs::remove_dir_all(root).ok();
+        }
+
+        #[test]
+        fn with_docs_and_status_filter() {
+            let root = temp_dir("list-kind-filter");
+            write_file(
+                &root,
+                "_docs/designs/a.md",
+                "---\ntitle: Alpha\nversion: 1.0.0\nstatus: draft\ndate: 2026-01-01\n---\nbody\n",
+            );
+            write_file(
+                &root,
+                "_docs/designs/b.md",
+                "---\ntitle: Beta\nversion: 1.0.0\nstatus: accepted\ndate: 2026-01-01\n---\nbody\n",
+            );
+            // Only draft
+            assert_eq!(list_kind(&root, DocKind::Designs, &["--status", "draft"]), 0);
+            fs::remove_dir_all(root).ok();
+        }
+
+        #[test]
+        fn with_json_output() {
+            let root = temp_dir("list-kind-json");
+            write_file(
+                &root,
+                "_docs/adrs/adr.md",
+                "---\ntitle: My ADR\nversion: 1.0.0\nstatus: accepted\ndate: 2026-01-01\n---\nbody\n",
+            );
+            assert_eq!(list_kind(&root, DocKind::Adrs, &["--json"]), 0);
+            fs::remove_dir_all(root).ok();
+        }
+
+        #[test]
+        fn query_no_match_returns_one() {
+            let root = temp_dir("list-kind-nomatch");
+            write_file(
+                &root,
+                "_docs/designs/a.md",
+                "---\ntitle: Alpha\nversion: 1.0.0\nstatus: draft\ndate: 2026-01-01\n---\nbody\n",
+            );
+            assert_eq!(list_kind(&root, DocKind::Designs, &["nonexistent"]), 1);
+            fs::remove_dir_all(root).ok();
+        }
+
+        #[test]
+        fn query_match_returns_zero() {
+            let root = temp_dir("list-kind-match");
+            write_file(
+                &root,
+                "_docs/designs/alpha.md",
+                "---\ntitle: Alpha Design\nversion: 1.0.0\nstatus: draft\ndate: 2026-01-01\n---\nbody\n",
+            );
+            assert_eq!(list_kind(&root, DocKind::Designs, &["alpha"]), 0);
+            fs::remove_dir_all(root).ok();
+        }
+
+        #[test]
+        fn invalid_option_returns_one() {
+            let root = temp_dir("list-kind-badopt");
+            assert_eq!(list_kind(&root, DocKind::Designs, &["--badopt"]), 1);
+            fs::remove_dir_all(root).ok();
+        }
+
+        #[test]
+        fn status_filter_no_match_prints_message() {
+            let root = temp_dir("list-kind-status-nomatch");
+            write_file(
+                &root,
+                "_docs/designs/a.md",
+                "---\ntitle: Alpha\nversion: 1.0.0\nstatus: draft\ndate: 2026-01-01\n---\nbody\n",
+            );
+            // Filter by "accepted" but only draft exists
+            assert_eq!(list_kind(&root, DocKind::Designs, &["--status", "accepted"]), 0);
+            fs::remove_dir_all(root).ok();
+        }
+
+        #[test]
+        fn limit_option_works() {
+            let root = temp_dir("list-kind-limit");
+            write_file(
+                &root,
+                "_docs/designs/a.md",
+                "---\ntitle: Alpha\nversion: 1.0.0\nstatus: draft\ndate: 2026-01-01\n---\nbody\n",
+            );
+            write_file(
+                &root,
+                "_docs/designs/b.md",
+                "---\ntitle: Beta\nversion: 1.0.0\nstatus: draft\ndate: 2026-02-01\n---\nbody\n",
+            );
+            assert_eq!(list_kind(&root, DocKind::Designs, &["--limit", "1"]), 0);
+            fs::remove_dir_all(root).ok();
+        }
+    }
 }

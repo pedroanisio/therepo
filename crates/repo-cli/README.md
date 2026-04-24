@@ -135,7 +135,7 @@ repo skills deploy --force    # Overwrite already-installed skills
 
 | Directory | Contents |
 |-----------|----------|
-| `.repo/skills/` | Built-in skill definitions (19 skills: tsdoc-voice, mental-model, adv-planning, purpose-md, testing-standards, incremental-validation, review-plan, prompt-builder, behavioral-layer, doc-hygiene, cli-ux-patterns, anti-slop, doc-patch, conceptual-codebase-analysis, codebase-requirements, response-dispatch, drift-risk-map, arch-decision-analysis, agent-task-coordination) |
+| `.repo/skills/` | Built-in skill definitions (48 skills: tsdoc-voice, mental-model, adv-planning, purpose-md, testing-standards, incremental-validation, review-plan, prompt-builder, behavioral-layer, doc-hygiene, cli-ux-patterns, anti-slop, doc-patch, conceptual-codebase-analysis, codebase-requirements, response-dispatch, drift-risk-map, arch-decision-analysis, agent-task-coordination, advanced-dataviz, bsl, cfs-mapper, code-patch, concept-cartographer, eng-drawing-extractor, engineering-svg, eng-schematic-renderer, experiment-lab, feedback-processor, formal-completeness-checker, gdrive-storage, iandeadv-dataviz, idea-lifecycle, logo-to-svg, multi-agent-deliberation, naming-conventions, pals-assessment, print-ready, problem-space-exploration, product-briefing, redaction-reconciliation, research-kb, schema-designer, solution-generalizability, solution-space-convergence, step-change-contributor, technical-howto, visual-explainer) |
 | `.repo/references/` | Reference documents (8: tsdoc-spec, mental-model-schema, plan-schema-fields, schema-reference, trait-spec, detection-patterns, report-template, sync-checks) |
 | `.repo/schemas/` | Formal schemas (2: plan-schema.ts, prompt-schema.ts) |
 

@@ -6,17 +6,25 @@ The format is based on Keep a Changelog and this project is intended to follow S
 
 ## [Unreleased]
 
+## [0.4.0-rc-5] - 2026-04-24
+
 ### Added
 
+- 29 new built-in ZIP skills imported from `aluminum-rabit`: `advanced-dataviz`, `bsl`, `cfs-mapper`, `code-patch`, `concept-cartographer`, `eng-drawing-extractor`, `engineering-svg`, `eng-schematic-renderer`, `experiment-lab`, `feedback-processor`, `formal-completeness-checker`, `gdrive-storage`, `iandeadv-dataviz`, `idea-lifecycle`, `logo-to-svg`, `multi-agent-deliberation`, `naming-conventions`, `pals-assessment`, `print-ready`, `problem-space-exploration`, `product-briefing`, `redaction-reconciliation`, `research-kb`, `schema-designer`, `solution-generalizability`, `solution-space-convergence`, `step-change-contributor`, `technical-howto`, `visual-explainer`
 - `arch-decision-analysis.skill` and `agent-task-coordination.skill` as built-in ZIP skill bundles, including their embedded reference assets and helper scripts
 - default `CLAUDE.md` guidance for PALS's LAW, making explicit that all LLM output must be treated as untrusted and verified
 - a default `CLAUDE.md` skill-assertion gate that tells agents to check for matching skills before answering freeform
 
 ### Changed
 
-- `repo skills deploy` built-in bundle inventory now includes 19 embedded skills instead of 17
-- `AGENTS.md`, the crate README, and bootstrap docs now describe the expanded built-in skill catalog and deployment surface
+- built-in skill count raised from 19 to 48
+- `agent-task-coordination`, `arch-decision-analysis`, `cli-ux-patterns`, `doc-patch`, and `response-dispatch` ZIP bundles refreshed from `aluminum-rabit` (new archives use a `<name>/` prefix inside the ZIP; both layouts are handled by `find_skill_md_in_zip`)
+- `AGENTS.md` skill table expanded with the 30 newly catalogued skills (the previous `agent-task-coordination` entry was also added to the table); crate README and bootstrap docs updated to the new `48 built-in skills` count
 - default `CLAUDE.md` reading order now prioritizes `CLAUDE.md`, file metadata, tests, and code without routing agents through `AGENTS.md`
+
+### Notes
+
+- `behavioral-layer.skill` (ZIP) was copied into `defaults/skills/` but is **not** registered. It would collide at deploy time with the existing plain-text `01KM1Z6WK23PJQJ5PM9E9B07BC-behavioral-layer.md` bundle, which already ships references, examples, and a template. The ZIP remains on disk as a reference copy only.
 
 ## [0.4.0-rc-4] - 2026-04-01
 

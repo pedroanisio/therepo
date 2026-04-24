@@ -88,7 +88,7 @@ repo skills init
 repo skills deploy
 ```
 
-Installs all 19 built-in skills into `~/.agents/skills/` and symlinks them for
+Installs all 48 built-in skills into `~/.agents/skills/` and symlinks them for
 every detected agent (Claude Code, Codex, etc.).
 
 ## What Gets Created

@@ -226,7 +226,7 @@ repo skills deploy --force     # Overwrite existing skill files
 
 **`deploy` flag:** `--force` / `-f` — overwrite already-installed skills
 
-**19 built-in skills:**
+**48 built-in skills:**
 
 | Skill | Description |
 |-------|-------------|
@@ -248,6 +248,36 @@ repo skills deploy --force     # Overwrite existing skill files
 | response-dispatch | Route tasks to execution, artefact, or text paths |
 | drift-risk-map | Audit codebase for silent drift-risk couplings |
 | arch-decision-analysis | Analyze architecture decisions with structured frameworks |
+| agent-task-coordination | Coordinate multi-agent edits with task locks on shared repositories |
+| advanced-dataviz | Build interactive data exploration with drill-down and cross-filtering |
+| bsl | Read, write, validate, and translate Behavior Spec Language specifications |
+| cfs-mapper | Map content into Claim Formalization Schema (CFS) instances |
+| code-patch | Apply structured JSON patch envelopes to source files (Py/JS/TS/Rust/HTML/CSS) |
+| concept-cartographer | Classify concepts across decomposition, maturity, and strategic dimensions |
+| eng-drawing-extractor | Extract engineering drawing data into EDIS JSON from docs and images |
+| engineering-svg | Produce standards-aware 2D engineering schematics as SVG |
+| eng-schematic-renderer | Render EDIS JSON into dimensioned engineering schematics |
+| experiment-lab | Run iterative hypothesis-test-learn AI experiments with vision validation |
+| feedback-processor | Evaluate feedback as claims before acting — prevents sycophantic compliance |
+| formal-completeness-checker | Formalize propositions into logic and verify computable-case coverage |
+| gdrive-storage | Route AI-generated files, memory, and session data to Google Drive |
+| iandeadv-dataviz | Interactive data exploration with drill-down and correlation discovery |
+| idea-lifecycle | Portfolio lifecycle management for a patchable idea/concept knowledge graph |
+| logo-to-svg | Vectorize raster logos to SVG via computer vision and bitmap tracing |
+| multi-agent-deliberation | Four-agent decomposition, strategy, critique, synthesis deliberation loop |
+| naming-conventions | Design sound naming conventions across software, data, and abstract systems |
+| pals-assessment | Audit artifacts for LLM output verification defects using PALS's Law |
+| print-ready | Add print-optimized CSS and a print button to HTML or React artifacts |
+| problem-space-exploration | Transform solution-centric briefs into rigorous problem-centric analyses |
+| product-briefing | Synthesize stakeholder-ready product briefings from technical and market docs |
+| redaction-reconciliation | Reconcile structural and content decay across multi-round document revisions |
+| research-kb | Build source-grounded knowledge bases before solving or building |
+| schema-designer | Design standards-compliant schemas for any domain |
+| solution-generalizability | Assess whether a solution generalizes across a problem class or is ad-hoc |
+| solution-space-convergence | Converge problem-space analyses into justified solution specifications |
+| step-change-contributor | Produce a single high-leverage contribution via cross-domain synthesis |
+| technical-howto | Write, review, or improve goal-oriented technical how-to guides |
+| visual-explainer | Transform documents into production-ready animation scripts |
 
 **`.repo/skills.toml` structure:**
 ```toml

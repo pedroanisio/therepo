@@ -2122,6 +2122,491 @@ mod tests {
         }
     }
 
+    mod build_report_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn empty_repo_reports_missing_config_and_health() {
+            let dir = std::env::temp_dir().join("health-build-report-empty");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            // Should have Repository section with warnings for config and _docs.
+            let repo_section = report.sections.iter().find(|s| s.name == "Repository");
+            assert!(repo_section.is_some(), "missing Repository section");
+            let repo = repo_section.unwrap();
+
+            let config_check = repo.checks.iter().find(|c| c.name == "config");
+            assert!(config_check.is_some());
+            assert_eq!(config_check.unwrap().status, "warning");
+
+            let docs_check = repo.checks.iter().find(|c| c.name == "_docs");
+            assert!(docs_check.is_some());
+            assert_eq!(docs_check.unwrap().status, "warning");
+
+            // No health.toml => info status.
+            let health_check = repo.checks.iter().find(|c| c.name == "health");
+            assert!(health_check.is_some());
+            assert_eq!(health_check.unwrap().status, "info");
+
+            // branch check: may be "ok" if temp dir is inside a git checkout,
+            // or "error" if truly outside any git repo.
+            let branch_check = repo.checks.iter().find(|c| c.name == "branch");
+            assert!(branch_check.is_some());
+            assert!(
+                branch_check.unwrap().status == "ok" || branch_check.unwrap().status == "error",
+                "branch should be ok or error, got: {}",
+                branch_check.unwrap().status
+            );
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn repo_with_config_and_health_toml_passes_those_checks() {
+            let dir = std::env::temp_dir().join("health-build-report-with-config");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+            fs::write(repo_dir.join("config.toml"), "[project]\nname = \"test\"\n").unwrap();
+            fs::write(
+                repo_dir.join("health.toml"),
+                "[environment]\nprivilege = \"auto\"\n",
+            )
+            .unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let repo_section = report.sections.iter().find(|s| s.name == "Repository").unwrap();
+
+            let config_check = repo_section.checks.iter().find(|c| c.name == "config").unwrap();
+            assert_eq!(config_check.status, "ok");
+
+            let health_check = repo_section.checks.iter().find(|c| c.name == "health").unwrap();
+            assert_eq!(health_check.status, "ok");
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn repo_with_docs_dir_passes_docs_check() {
+            let dir = std::env::temp_dir().join("health-build-report-docs");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(dir.join("_docs").join("plans")).unwrap();
+            fs::create_dir_all(dir.join("_docs").join("adrs")).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let repo_section = report.sections.iter().find(|s| s.name == "Repository").unwrap();
+            let docs_check = repo_section.checks.iter().find(|c| c.name == "_docs").unwrap();
+            assert_eq!(docs_check.status, "ok");
+            assert!(docs_check.summary.contains("plans"));
+            assert!(docs_check.summary.contains("adrs"));
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn verbose_mode_includes_info_entries_for_missing_tools() {
+            let dir = std::env::temp_dir().join("health-build-report-verbose");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let report_verbose = build_report(&dir, true, false);
+            let report_normal = build_report(&dir, false, false);
+
+            let tools_verbose = &report_verbose.sections.iter().find(|s| s.name == "Tools").unwrap().checks;
+            let tools_normal = &report_normal.sections.iter().find(|s| s.name == "Tools").unwrap().checks;
+
+            let info_count_verbose = tools_verbose.iter().filter(|c| c.status == "info").count();
+            let info_count_normal = tools_normal.iter().filter(|c| c.status == "info").count();
+
+            // Verbose mode should show at least as many entries (info for missing tools).
+            assert!(
+                info_count_verbose >= info_count_normal,
+                "verbose should show more info entries: verbose={info_count_verbose}, normal={info_count_normal}"
+            );
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn custom_checks_from_health_toml_are_evaluated() {
+            let dir = std::env::temp_dir().join("health-build-report-custom-checks");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+
+[checks.always_pass]
+command = "true"
+description = "always passes"
+severity = "error"
+
+[checks.always_fail]
+command = "false"
+description = "always fails"
+severity = "warning"
+hint = "this is expected"
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let custom = report.sections.iter().find(|s| s.name == "Checks");
+            assert!(custom.is_some(), "expected Checks section for custom checks");
+            let checks = &custom.unwrap().checks;
+
+            let pass_check = checks.iter().find(|c| c.name == "always_pass");
+            assert!(pass_check.is_some());
+            assert_eq!(pass_check.unwrap().status, "ok");
+
+            let fail_check = checks.iter().find(|c| c.name == "always_fail");
+            assert!(fail_check.is_some());
+            assert_eq!(fail_check.unwrap().status, "warning");
+
+            assert!(report.warnings > 0);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn environment_section_always_present() {
+            let dir = std::env::temp_dir().join("health-build-report-env");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let env_section = report.sections.iter().find(|s| s.name == "Environment");
+            assert!(env_section.is_some(), "missing Environment section");
+            let env = env_section.unwrap();
+
+            // runtime and privilege should always be present.
+            assert!(env.checks.iter().any(|c| c.name == "runtime"));
+            assert!(env.checks.iter().any(|c| c.name == "privilege"));
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn allowed_runtimes_constraint_triggers_error() {
+            let dir = std::env::temp_dir().join("health-build-report-runtime");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            // Set allowed_runtimes to something that won't match the current environment.
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+allowed_runtimes = ["definitely-not-this-runtime"]
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let env_section = report.sections.iter().find(|s| s.name == "Environment").unwrap();
+            let runtime = env_section.checks.iter().find(|c| c.name == "runtime").unwrap();
+            assert_eq!(runtime.status, "error");
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    mod cmd_fix_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn no_config_reports_nothing_plain() {
+            let dir = std::env::temp_dir().join("health-fix-no-config");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let code = cmd_fix(&dir, false);
+            assert_eq!(code, 0);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn no_config_reports_nothing_json() {
+            let dir = std::env::temp_dir().join("health-fix-no-config-json");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let code = cmd_fix(&dir, true);
+            assert_eq!(code, 0);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn empty_checks_section_reports_nothing() {
+            let dir = std::env::temp_dir().join("health-fix-empty-checks");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            // Config with no [checks.*] entries.
+            fs::write(
+                repo_dir.join("health.toml"),
+                "[environment]\nprivilege = \"auto\"\n",
+            )
+            .unwrap();
+
+            let code = cmd_fix(&dir, false);
+            assert_eq!(code, 0);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn check_that_passes_is_skipped() {
+            let dir = std::env::temp_dir().join("health-fix-passes");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+
+[checks.ok_check]
+command = "true"
+description = "passes"
+severity = "error"
+fix_cmd = "echo fixed"
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            // Plain mode: check passes, fix is skipped.
+            let code = cmd_fix(&dir, false);
+            assert_eq!(code, 0);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn check_that_fails_with_fix_cmd_runs_fix() {
+            let dir = std::env::temp_dir().join("health-fix-with-fix-cmd");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let marker = dir.join("fix-was-run");
+            let marker_path = marker.to_string_lossy().into_owned();
+            let toml_content = format!(
+                r#"
+[environment]
+privilege = "auto"
+
+[checks.failing_check]
+command = "false"
+description = "always fails"
+severity = "error"
+fix_cmd = "touch {marker_path}"
+"#
+            );
+            fs::write(repo_dir.join("health.toml"), &toml_content).unwrap();
+
+            let code = cmd_fix(&dir, false);
+            assert_eq!(code, 0);
+            assert!(marker.exists(), "fix_cmd should have been executed");
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn check_that_fails_without_fix_cmd_is_skipped() {
+            let dir = std::env::temp_dir().join("health-fix-no-fix-cmd");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+
+[checks.no_fix]
+command = "false"
+description = "fails but no fix"
+severity = "error"
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let code = cmd_fix(&dir, false);
+            assert_eq!(code, 0);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn fix_cmd_failure_returns_nonzero() {
+            let dir = std::env::temp_dir().join("health-fix-fail");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+
+[checks.broken]
+command = "false"
+description = "fails"
+severity = "error"
+fix_cmd = "exit 1"
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let code = cmd_fix(&dir, false);
+            assert_eq!(code, 1, "should return 1 when a fix fails");
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    mod cmd_export_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn creates_health_toml_plain() {
+            let dir = std::env::temp_dir().join("health-export-plain");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let code = cmd_export(&dir, false);
+            assert_eq!(code, 0);
+            assert!(repo_dir.join("health.toml").exists());
+
+            let content = fs::read_to_string(repo_dir.join("health.toml")).unwrap();
+            assert!(content.contains("health.toml"));
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn creates_health_toml_json() {
+            let dir = std::env::temp_dir().join("health-export-json");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let code = cmd_export(&dir, true);
+            assert_eq!(code, 0);
+            assert!(repo_dir.join("health.toml").exists());
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    mod print_help_tests {
+        use super::*;
+
+        #[test]
+        fn does_not_panic() {
+            print_help();
+        }
+    }
+
+    mod run_dispatch_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn help_flag_returns_zero() {
+            let dir = std::env::temp_dir().join("health-run-help");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            assert_eq!(run(&dir, &["--help"]), 0);
+            assert_eq!(run(&dir, &["-h"]), 0);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn unknown_subcommand_returns_one() {
+            let dir = std::env::temp_dir().join("health-run-unknown");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            assert_eq!(run(&dir, &["nonexistent"]), 1);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn dispatches_to_init() {
+            let dir = std::env::temp_dir().join("health-run-init");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let code = run(&dir, &["init"]);
+            assert_eq!(code, 0);
+            assert!(repo_dir.join("health.toml").exists());
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn dispatches_to_fix() {
+            let dir = std::env::temp_dir().join("health-run-fix");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let code = run(&dir, &["fix"]);
+            assert_eq!(code, 0);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn dispatches_to_check_with_no_subcommand() {
+            let dir = std::env::temp_dir().join("health-run-check");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            // No subcommand => runs cmd_check.
+            let _code = run(&dir, &[]);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn dispatches_to_check_with_verbose_flag() {
+            let dir = std::env::temp_dir().join("health-run-verbose");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let _code = run(&dir, &["--verbose"]);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn dispatches_to_check_with_json_flag() {
+            let dir = std::env::temp_dir().join("health-run-json");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let _code = run(&dir, &["--json"]);
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
     mod check_execute {
         use super::*;
 
@@ -2182,6 +2667,591 @@ mod tests {
                 CheckResult::Missing => {}
                 _ => panic!("expected missing command"),
             }
+        }
+    }
+
+    // ── build_report: custom tools from health.toml ────────────────
+
+    mod build_report_custom_tool_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn custom_tool_found_passes() {
+            let dir = std::env::temp_dir().join("health-custom-tool-ok");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            // Define a custom tool that uses /bin/sh as the command.
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+
+[tools.my-custom-tool]
+required = false
+command = "sh"
+version_args = ["-c", "echo 1.2.3"]
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let tools = &report.sections.iter().find(|s| s.name == "Tools").unwrap().checks;
+            let custom = tools.iter().find(|c| c.name == "my-custom-tool");
+            assert!(custom.is_some(), "custom tool should appear in Tools section");
+            assert_eq!(custom.unwrap().status, "ok");
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn custom_tool_required_missing_errors() {
+            let dir = std::env::temp_dir().join("health-custom-tool-missing");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+
+[tools.nonexistent-tool-xyz]
+required = true
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let tools = &report.sections.iter().find(|s| s.name == "Tools").unwrap().checks;
+            let custom = tools.iter().find(|c| c.name == "nonexistent-tool-xyz");
+            assert!(custom.is_some());
+            assert_eq!(custom.unwrap().status, "error");
+            assert!(custom.unwrap().summary.contains("required but not found"));
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn custom_tool_optional_missing_hidden_in_normal_mode() {
+            let dir = std::env::temp_dir().join("health-custom-tool-opt-hidden");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+
+[tools.nonexistent-optional-xyz]
+required = false
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let report_normal = build_report(&dir, false, false);
+            let report_verbose = build_report(&dir, true, false);
+
+            let tools_normal = &report_normal.sections.iter().find(|s| s.name == "Tools").unwrap().checks;
+            let tools_verbose = &report_verbose.sections.iter().find(|s| s.name == "Tools").unwrap().checks;
+
+            let in_normal = tools_normal.iter().any(|c| c.name == "nonexistent-optional-xyz");
+            let in_verbose = tools_verbose.iter().any(|c| c.name == "nonexistent-optional-xyz");
+
+            // In normal mode, optional missing tool should not appear.
+            assert!(!in_normal, "optional missing tool should be hidden in normal mode");
+            // In verbose mode, it should appear as info.
+            assert!(in_verbose, "optional missing tool should appear in verbose mode");
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn custom_tool_with_version_constraint_error() {
+            let dir = std::env::temp_dir().join("health-custom-tool-ver");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            // Use sh as the command, it will report a version.
+            // Set an impossibly high min_version.
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+
+[tools.my-ver-tool]
+required = true
+command = "sh"
+version_args = ["-c", "echo tool 0.0.1"]
+min_version = "99.0.0"
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let tools = &report.sections.iter().find(|s| s.name == "Tools").unwrap().checks;
+            let check = tools.iter().find(|c| c.name == "my-ver-tool");
+            assert!(check.is_some());
+            assert_eq!(check.unwrap().status, "error");
+            assert!(check.unwrap().summary.contains("minimum 99.0.0"));
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    // ── build_report: privilege mismatch ───────────────────────────
+
+    mod build_report_privilege_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn privilege_mismatch_triggers_error() {
+            let dir = std::env::temp_dir().join("health-privilege-mismatch");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            // Set privilege to something that definitely won't match.
+            let toml_content = r#"
+[environment]
+privilege = "definitely-not-real-tool"
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let env_section = report.sections.iter().find(|s| s.name == "Environment").unwrap();
+            let priv_check = env_section.checks.iter().find(|c| c.name == "privilege").unwrap();
+            assert_eq!(priv_check.status, "error");
+            assert!(priv_check.summary.contains("expected definitely-not-real-tool"));
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn privilege_auto_always_passes() {
+            let dir = std::env::temp_dir().join("health-privilege-auto");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let env_section = report.sections.iter().find(|s| s.name == "Environment").unwrap();
+            let priv_check = env_section.checks.iter().find(|c| c.name == "privilege").unwrap();
+            assert_eq!(priv_check.status, "ok");
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    // ── build_report: required_shell ───────────────────────────────
+
+    mod build_report_required_shell_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn required_shell_not_found_triggers_error() {
+            let dir = std::env::temp_dir().join("health-req-shell-err");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+required_shell = "definitely-not-a-shell-xyz"
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let env_section = report.sections.iter().find(|s| s.name == "Environment").unwrap();
+            let shell_check = env_section.checks.iter().find(|c| c.name == "shells");
+            // If /etc/shells exists and has content, the shell check should error
+            // because "definitely-not-a-shell-xyz" won't be in it.
+            if let Some(check) = shell_check {
+                if check.status != "warning" {
+                    // warning means no shells found at all.
+                    assert_eq!(check.status, "error");
+                    assert!(check.summary.contains("definitely-not-a-shell-xyz"));
+                }
+            }
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    // ── cmd_fix: json output paths ─────────────────────────────────
+
+    mod cmd_fix_json_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn fix_with_builtin_fix_cmd_json() {
+            let dir = std::env::temp_dir().join("health-fix-builtin-json");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+
+[checks.missing_claude]
+command = "test -f CLAUDE.md"
+description = "CLAUDE.md must exist"
+severity = "error"
+fix_cmd = "builtin:copy-doc CLAUDE.md"
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let code = cmd_fix(&dir, true);
+            // Should fix successfully (copy CLAUDE.md).
+            assert_eq!(code, 0);
+            assert!(dir.join("CLAUDE.md").exists());
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn fix_with_shell_fix_cmd_json() {
+            let dir = std::env::temp_dir().join("health-fix-shell-json");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let marker = dir.join("marker.txt");
+            let marker_path = marker.to_string_lossy().into_owned();
+            let toml_content = format!(
+                r#"
+[environment]
+privilege = "auto"
+
+[checks.create_marker]
+command = "test -f {marker_path}"
+description = "marker must exist"
+severity = "error"
+fix_cmd = "touch {marker_path}"
+"#
+            );
+            fs::write(repo_dir.join("health.toml"), &toml_content).unwrap();
+
+            let code = cmd_fix(&dir, true);
+            assert_eq!(code, 0);
+            assert!(marker.exists());
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn fix_failure_json_returns_one() {
+            let dir = std::env::temp_dir().join("health-fix-fail-json");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+
+[checks.broken]
+command = "false"
+description = "always fails"
+severity = "error"
+fix_cmd = "exit 1"
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let code = cmd_fix(&dir, true);
+            assert_eq!(code, 1);
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    // ── cmd_check with check_updates flag ──────────────────────────
+
+    mod cmd_check_updates_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn check_with_updates_flag_does_not_panic() {
+            let dir = std::env::temp_dir().join("health-check-updates");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            // check_updates=true triggers network calls; just verify no panic.
+            let _code = cmd_check(&dir, false, true, false);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn check_with_updates_flag_json() {
+            let dir = std::env::temp_dir().join("health-check-updates-json");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let _code = cmd_check(&dir, false, true, true);
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    // ── run dispatch: additional paths ─────────────────────────────
+
+    mod run_dispatch_extra_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn dispatches_to_export() {
+            let dir = std::env::temp_dir().join("health-run-export");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let code = run(&dir, &["export"]);
+            assert_eq!(code, 0);
+            assert!(repo_dir.join("health.toml").exists());
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn dispatches_to_export_json() {
+            let dir = std::env::temp_dir().join("health-run-export-json");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let code = run(&dir, &["export", "--json"]);
+            assert_eq!(code, 0);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn dispatches_to_fix_json() {
+            let dir = std::env::temp_dir().join("health-run-fix-json");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let code = run(&dir, &["fix", "--json"]);
+            assert_eq!(code, 0);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn check_updates_flag_dispatches() {
+            let dir = std::env::temp_dir().join("health-run-check-updates");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let _code = run(&dir, &["--check-updates"]);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn combined_verbose_json_flags() {
+            let dir = std::env::temp_dir().join("health-run-verbose-json");
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).unwrap();
+
+            let _code = run(&dir, &["--verbose", "--json"]);
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    // ── build_report: custom check with error severity ─────────────
+
+    mod build_report_custom_check_severity_tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn custom_check_error_severity_counts_as_error() {
+            let dir = std::env::temp_dir().join("health-custom-check-error");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+
+[checks.must_fail]
+command = "false"
+description = "this must fail"
+severity = "error"
+hint = "fix it by doing X"
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let custom = report.sections.iter().find(|s| s.name == "Checks").unwrap();
+            let check = custom.checks.iter().find(|c| c.name == "must_fail").unwrap();
+            assert_eq!(check.status, "error");
+            assert!(check.details.iter().any(|d| d.contains("hint:")));
+            assert!(report.errors > 0);
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn custom_check_with_stderr_output_includes_detail() {
+            let dir = std::env::temp_dir().join("health-custom-check-stderr");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+
+[checks.stderr_check]
+command = "echo 'error detail' >&2; exit 1"
+description = "produces stderr"
+severity = "warning"
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let custom = report.sections.iter().find(|s| s.name == "Checks").unwrap();
+            let check = custom.checks.iter().find(|c| c.name == "stderr_check").unwrap();
+            assert_eq!(check.status, "warning");
+            assert!(check.details.iter().any(|d| d.contains("error detail")));
+
+            fs::remove_dir_all(dir).ok();
+        }
+
+        #[test]
+        fn custom_check_with_stdout_output_includes_detail() {
+            let dir = std::env::temp_dir().join("health-custom-check-stdout");
+            let _ = fs::remove_dir_all(&dir);
+            let repo_dir = dir.join(".repo");
+            fs::create_dir_all(&repo_dir).unwrap();
+
+            let toml_content = r#"
+[environment]
+privilege = "auto"
+
+[checks.stdout_check]
+command = "echo 'stdout info'; exit 1"
+description = "produces stdout on failure"
+severity = "warning"
+"#;
+            fs::write(repo_dir.join("health.toml"), toml_content).unwrap();
+
+            let report = build_report(&dir, false, false);
+
+            let custom = report.sections.iter().find(|s| s.name == "Checks").unwrap();
+            let check = custom.checks.iter().find(|c| c.name == "stdout_check").unwrap();
+            assert_eq!(check.status, "warning");
+            assert!(check.details.iter().any(|d| d.contains("stdout info")));
+
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    // ── print_report additional coverage ───────────────────────────
+
+    mod print_report_extra_tests {
+        use super::*;
+
+        #[test]
+        fn report_with_info_status_and_next_steps() {
+            let report = HealthReport {
+                passed: 1,
+                warnings: 0,
+                errors: 0,
+                sections: vec![HealthSection {
+                    name: "Repo".into(),
+                    checks: vec![
+                        HealthCheckRecord {
+                            name: "health".into(),
+                            status: "info".into(),
+                            summary: "no config".into(),
+                            details: Vec::new(),
+                            recommendation: Some("run init".into()),
+                        },
+                        HealthCheckRecord {
+                            name: "config".into(),
+                            status: "ok".into(),
+                            summary: "present".into(),
+                            details: Vec::new(),
+                            recommendation: None,
+                        },
+                    ],
+                }],
+            };
+            // Should not panic and should print next steps.
+            print_report(&report);
+        }
+
+        #[test]
+        fn report_with_empty_section_skipped() {
+            let report = HealthReport {
+                passed: 0,
+                warnings: 0,
+                errors: 0,
+                sections: vec![
+                    HealthSection {
+                        name: "Empty".into(),
+                        checks: Vec::new(),
+                    },
+                    HealthSection {
+                        name: "NonEmpty".into(),
+                        checks: vec![HealthCheckRecord {
+                            name: "test".into(),
+                            status: "ok".into(),
+                            summary: "good".into(),
+                            details: Vec::new(),
+                            recommendation: None,
+                        }],
+                    },
+                ],
+            };
+            print_report(&report);
+        }
+    }
+
+    // ── extract_version_number extra tests ─────────────────────────
+
+    mod extract_version_number_tests {
+        use super::*;
+
+        #[test]
+        fn strips_v_prefix() {
+            assert_eq!(extract_version_number("v1.2.3"), "1.2.3");
+        }
+
+        #[test]
+        fn returns_empty_for_no_version() {
+            assert_eq!(extract_version_number("no version here"), "");
+        }
+
+        #[test]
+        fn handles_trailing_non_numeric() {
+            assert_eq!(
+                extract_version_number("tool 3.14.159-beta"),
+                "3.14.159"
+            );
         }
     }
 }
