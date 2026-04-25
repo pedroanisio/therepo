@@ -5,6 +5,7 @@ const TOP_LEVEL_EXAMPLES: &str = "\
 Examples:
   repo
   repo --json
+  repo init
   repo docs designs --status accepted --json
   repo health --verbose --json
   repo prompt list --tag review --json
@@ -73,6 +74,8 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// Initialize .repo/ with all built-in defaults (docs, schemas, skills, prompts, health).
+    Init,
     /// Browse plans, ADRs, and references.
     Docs(DocsArgs),
     /// Check development environment and repository health.

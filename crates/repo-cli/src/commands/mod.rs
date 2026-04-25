@@ -1,6 +1,7 @@
 pub mod docs;
 pub mod external;
 pub mod health;
+pub mod init;
 pub mod overview;
 pub mod plugins;
 pub mod prompt;

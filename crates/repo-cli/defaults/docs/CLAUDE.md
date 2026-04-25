@@ -210,6 +210,11 @@ When a task is clear, execute it. Do not:
 - Stall on stylistic or aesthetic preferences. Ship, then adjust.
 - Cascade hypothetical clarifying questions. If you must ask, ask one
   targeted question about the single blocking ambiguity.
+- **Defer the task.** DEFERRALS ARE ACTIONS THAT ONLY THE OPERATOR CAN
+  CALL/MANDATE. NO DEFERRAL BY ANY AI AGENT IS ALLOWED ON THIS CODEBASE.
+  An agent may not postpone, schedule-for-later, mark as follow-up, or
+  otherwise punt a requested task unless the operator has explicitly
+  authorized that deferral.
 
 Pushback is still required (see Rules 1 and 6) when:
 

@@ -26,6 +26,7 @@ pub fn run_cli(args: &[String]) -> i32 {
     let json = cli.json;
 
     match cli.command {
+        Some(Commands::Init) => commands::init::run(json),
         Some(Commands::Docs(cmd)) => commands::docs::run(cmd, json),
         Some(Commands::Health(cmd)) => commands::health::run(&cmd, json),
         Some(Commands::Skills(cmd)) => commands::skills::run(cmd, json),
