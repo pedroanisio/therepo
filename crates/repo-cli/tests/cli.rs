@@ -188,6 +188,68 @@ fn plugins_info_unknown_name_returns_non_zero() {
 }
 
 #[test]
+fn init_writes_builtin_docs_and_repo_layout() {
+    let repo_root = temp_repo("init");
+    let output = run_repo(&repo_root, &["init"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("initializing .repo/"));
+    assert!(text.contains("repo initialized"));
+
+    assert!(repo_root.join("CLAUDE.md").is_file());
+    assert!(repo_root.join("DISCLAIMER.md").is_file());
+    assert!(repo_root.join(".repo").join("storage").join(".keep").is_file());
+
+    std::fs::remove_dir_all(repo_root).ok();
+}
+
+#[test]
+fn init_json_emits_machine_readable_report() {
+    let repo_root = temp_repo("init-json");
+    let output = run_repo(&repo_root, &["--json", "init"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let last_line = stdout(&output)
+        .lines()
+        .rfind(|line| line.trim_start().starts_with('{'))
+        .map(str::to_owned)
+        .expect("expected at least one JSON object on stdout");
+    let value: serde_json::Value = serde_json::from_str(&last_line).unwrap();
+    assert_eq!(value["ok"], true);
+    assert_eq!(value["exit_code"], 0);
+
+    assert!(repo_root.join("CLAUDE.md").is_file());
+    assert!(repo_root.join("DISCLAIMER.md").is_file());
+
+    std::fs::remove_dir_all(repo_root).ok();
+}
+
+#[test]
+fn init_does_not_overwrite_existing_docs() {
+    let repo_root = temp_repo("init-idempotent");
+    std::fs::write(repo_root.join("CLAUDE.md"), "preserved\n").unwrap();
+    std::fs::write(repo_root.join("DISCLAIMER.md"), "preserved\n").unwrap();
+
+    let output = run_repo(&repo_root, &["init"]);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("CLAUDE.md already exists"));
+    assert!(text.contains("DISCLAIMER.md already exists"));
+    assert_eq!(
+        std::fs::read_to_string(repo_root.join("CLAUDE.md")).unwrap(),
+        "preserved\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo_root.join("DISCLAIMER.md")).unwrap(),
+        "preserved\n"
+    );
+
+    std::fs::remove_dir_all(repo_root).ok();
+}
+
+#[test]
 fn external_plugin_without_dispatch_returns_non_zero() {
     let repo_root = temp_repo("external-plugin");
     let plugin_dir = repo_root.join(".repo").join("plugins").join("demo");
