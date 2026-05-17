@@ -1,3 +1,5 @@
 crates/repo-cli/target/
 .claude/settings.json
 .agent-tasks/
+*.pyc
+__pycache__/

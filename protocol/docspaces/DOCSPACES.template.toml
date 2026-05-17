@@ -1,0 +1,252 @@
+# =============================================================================
+# DOCSPACES.toml — Reference template
+# =============================================================================
+#
+# This is a fully annotated example of a DOCSPACES manifest conforming to
+# version 1.0 of the DOCSPACES protocol. Copy it into your docs root,
+# rename, and edit. Every section is commented; delete the ones you do
+# not need.
+#
+# Spec: protocol/docspaces/PROTOCOL.md
+# Reference validator: protocol/docspaces/validator/
+# Conformance: section 8 of PROTOCOL.md
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# [protocol] — REQUIRED
+#
+# Declares which version of the DOCSPACES specification this manifest
+# claims to satisfy. Validators MUST refuse manifests whose major version
+# they do not implement.
+# -----------------------------------------------------------------------------
+[protocol]
+docspaces = "1.0"
+
+
+# -----------------------------------------------------------------------------
+# [docspace.<name>] — one block per docspace
+#
+# `<name>` is your free-form id (kebab-case, ASCII recommended).
+#
+# REQUIRED fields:
+#   version  — any string; this is the source of truth for the docspace
+#   primary  — the member doc that owns this version (its frontmatter
+#              `version:` MUST equal `version` above)
+#   members  — list of files in this docspace. MUST include `primary`.
+#
+# OPTIONAL fields:
+#   directory  — subdirectory under the docs root that contains members.
+#                Defaults to "." (members are siblings of DOCSPACES.toml).
+#   changelog  — informational; never validated.
+#   opt_out    — members that live in this directory but version
+#                independently. They appear in the validator's view but
+#                are exempt from `version: docspace` inheritance.
+#
+# Every member document MUST carry frontmatter:
+#
+#     ---
+#     docspace: <name>
+#     version: docspace        # …except the primary uses the literal
+#                              # version string, and opt-outs use any
+#                              # non-"docspace" string.
+#     ---
+# -----------------------------------------------------------------------------
+[docspace.my-spec]
+version   = "1.0.0"
+primary   = "spec.md"
+directory = "."
+changelog = "CHANGELOG.md"
+members = [
+  "spec.md",
+  "guide.md",
+  "reference.md",
+  "CHANGELOG.md",
+]
+opt_out = [
+  # "vendored-third-party.md",
+]
+
+
+# -----------------------------------------------------------------------------
+# Multiple docspaces are common — each is independent.
+# -----------------------------------------------------------------------------
+[docspace.tutorial]
+version   = "0.3.0"
+primary   = "tutorial/index.md"
+directory = "tutorial"
+members = [
+  "tutorial/index.md",
+  "tutorial/getting-started.md",
+  "tutorial/advanced.md",
+]
+
+
+# -----------------------------------------------------------------------------
+# [docspace.<name>.binds] — cross-docspace bindings (OPTIONAL)
+#
+# A bind declares: "this docspace, at its current version, is compatible
+# with <other-docspace> at <version>". Useful when one specification
+# depends on another's contract.
+#
+# Two forms — pick per binding:
+#
+#   short form (version only — minimal contract):
+#     other-spec = "2.3.4"
+#
+#   strong form (commit-pinned — recommended once content stabilizes):
+#     [docspace.X.binds.other-spec]
+#     version = "2.3.4"
+#     commit  = "abc1234"   # full or abbreviated git SHA, must exist
+#
+# With a commit pin the validator checks:
+#   - the commit resolves in the local git tree
+#   - <other-spec>'s primary doc at that commit has version="2.3.4"
+#
+# Binds reference only docspaces declared in this manifest (universal
+# check #4 — binds-keys).
+# -----------------------------------------------------------------------------
+# [docspace.my-spec.binds]
+# tutorial = "0.3.0"
+#
+# [docspace.my-spec.binds.tutorial]
+# version = "0.3.0"
+# commit  = "abc1234"
+
+
+# -----------------------------------------------------------------------------
+# [unaffiliated] — informational only (OPTIONAL)
+#
+# Documents and binary assets that live under the docs root but are not
+# members of any docspace. The validator does not enforce anything on
+# these; listing them is purely for inventory hygiene and helps spot
+# orphaned files.
+# -----------------------------------------------------------------------------
+[unaffiliated]
+docs = [
+  # "CONTRIBUTING.md",
+  # "ad-hoc-notes.md",
+]
+binary_assets = [
+  # "diagrams/architecture.svg",
+]
+
+
+# =============================================================================
+# EXTENSIONS — opt-in, repo-specific checks
+# =============================================================================
+#
+# Anything below `[extensions.<id>]` is OUTSIDE the universal protocol
+# core. Each `<id>` is documented at
+# protocol/docspaces/extensions/<id>.md. A validator that lacks an
+# extension's implementation MUST silently no-op for that extension —
+# absence of an extension is never a universal failure.
+#
+# The block below shows every registered extension shipped with the
+# reference validator. Uncomment the ones you want. Delete the rest.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# disclaimer — require a `disclaimer:` frontmatter field on every .md
+# -----------------------------------------------------------------------------
+# [extensions.disclaimer]
+# enabled = true
+# opt_out = [
+#   # "CR/one-off-decision-record.md",
+# ]
+
+
+# -----------------------------------------------------------------------------
+# binds-frontmatter — primary doc must declare a `binds_docspaces:` list
+# whose entries match the [docspace.X.binds] keys.
+# -----------------------------------------------------------------------------
+# [extensions.binds-frontmatter]
+# enabled = true
+
+
+# -----------------------------------------------------------------------------
+# readme-table — a summary table in `<docs-root>/README.md` must mirror
+# the manifest's per-docspace version / primary / member-count values.
+# -----------------------------------------------------------------------------
+# [extensions.readme-table]
+# enabled = true
+# readme  = "README.md"   # relative to docs root
+
+
+# -----------------------------------------------------------------------------
+# frontmatter-paths — frontmatter `companion_to`, `depends_on`, `extends`
+# must resolve to real files relative to the doc.
+# -----------------------------------------------------------------------------
+# [extensions.frontmatter-paths]
+# enabled = true
+
+
+# -----------------------------------------------------------------------------
+# section-refs — cross-document section citations of the forms
+# `parent §N.M`, `prior §N.M`, `<primary-stem> §N.M` must resolve
+# against the target primary's heading index.
+# -----------------------------------------------------------------------------
+# [extensions.section-refs]
+# enabled = true
+
+
+# -----------------------------------------------------------------------------
+# markdown-links — every relative [text](path.md) link body-resolves to a
+# real file; with `verify_anchors`, [text](path.md#heading) anchors
+# resolve to GitHub-style heading slugs in the target.
+# -----------------------------------------------------------------------------
+# [extensions.markdown-links]
+# enabled = true
+# verify_anchors = true
+# anchor_opt_out = []
+# external_prefixes = [
+#   # "../../sibling-repo/",
+# ]
+
+
+# -----------------------------------------------------------------------------
+# line-refs — `[text](path.rs#L<N>-L<M>)` style links must NOT pin past
+# end-of-file in the linked source. Pins running off the end are drift.
+# -----------------------------------------------------------------------------
+# [extensions.line-refs]
+# enabled = true
+# opt_out = [
+#   # "post-mortems/2026-01-incident.md",
+# ]
+
+
+# -----------------------------------------------------------------------------
+# prose-claims — numeric / version claims in prose are reconciled against
+# the live repo state.
+#
+# Supported claim classes (built-in):
+#   - "N proven theorems"     → checked against `grep -cE '^theorem '
+#                                proofs/**/*.lean` (path configurable)
+#   - "zero `sorry`"          → checked against count of un-commented
+#                                `sorry` in proofs/
+#   - "leanprover/lean4:vX.Y" → checked against proofs/lean-toolchain
+#
+# Each class is opt-in — set `lean_*` paths to activate.
+# -----------------------------------------------------------------------------
+# [extensions.prose-claims]
+# enabled = true
+# scan = [
+#   "PURPOSE.md",
+#   "TO-THINK.md",
+# ]
+# lean_proofs_root  = "proofs"     # required for theorem / sorry checks
+# lean_toolchain    = "proofs/lean-toolchain"
+
+
+# -----------------------------------------------------------------------------
+# readme-status — status markers in code (`stub`, `TBD`, `TODO`,
+# `FIXME`, `XXX:`, `unimplemented`) must either be removed or carry an
+# explicit `<!-- status-deferred: <why> -->` annotation.
+# -----------------------------------------------------------------------------
+# [extensions.readme-status]
+# enabled = true
+# scan_globs = [
+#   # "crates/*/README.md",
+#   # "crates/*/src/lib.rs",
+# ]

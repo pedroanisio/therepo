@@ -1,0 +1,57 @@
+# =============================================================================
+# DOCSPACES manifest — neutrons-repo-soul
+#
+# This repository's primary versioned documentation is the DOCSPACES
+# protocol itself, which lives under /protocol/docspaces/. The protocol
+# is its own first conforming consumer.
+#
+# Manifest conforms to DOCSPACES protocol v1.0 —
+# see /protocol/docspaces/PROTOCOL.md.
+# =============================================================================
+
+[protocol]
+docspaces = "1.0"
+
+
+# -----------------------------------------------------------------------------
+# docspaces — the DOCSPACES protocol specification itself
+#
+# Primary doc owns the v1.0.0 version string. Other members (README,
+# EXTENSIONS, MIGRATION) inherit via `version: docspace` and document
+# the same release-line.
+# -----------------------------------------------------------------------------
+[docspace.docspaces]
+version   = "1.0.0"
+primary   = "PROTOCOL.md"
+directory = "../../protocol/docspaces"
+members = [
+  "PROTOCOL.md",
+  "README.md",
+  "EXTENSIONS.md",
+  "MIGRATION.md",
+]
+
+
+# -----------------------------------------------------------------------------
+# Unaffiliated docs — present under the docs root but not docspace members.
+#
+# DOCSPACES.md is repo-specific commentary on the protocol, not itself
+# a versioned spec member. Listed here so the inventory is honest;
+# `[unaffiliated]` is informational and not validated.
+# -----------------------------------------------------------------------------
+[unaffiliated]
+docs = [
+  "DOCSPACES.md",
+]
+
+
+# =============================================================================
+# Extensions — opt-in repo policy checks
+# (see /protocol/docspaces/PROTOCOL.md §7 and /protocol/docspaces/EXTENSIONS.md)
+# =============================================================================
+
+# CLAUDE.md §5 requires AI-generated `.md` files to carry a `disclaimer:`
+# frontmatter block. The disclaimer extension enforces presence.
+[extensions.disclaimer]
+enabled = true
+opt_out = []
